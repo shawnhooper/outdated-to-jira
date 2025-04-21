@@ -63,6 +63,19 @@ php outdated-to-jira ./frontend-app/package.json --package=react --package=react
 php outdated-to-jira ../backend/composer.json -p psr/log
 ```
 
+## Testing
+
+This project includes unit tests written using PHPUnit to verify the core components.
+
+1.  **Install Dependencies:** Ensure you have installed the development dependencies:
+    ```bash
+    composer install
+    ```
+2.  **Run Tests:** Execute the test suite using the following command from the project root:
+    ```bash
+    vendor/bin/phpunit
+    ```
+
 ## Workflow
 
 1.  **Parse Arguments:** Get the path to the dependency file and check for options like `--dry-run` and `--package`.

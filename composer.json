@@ -21,5 +21,8 @@
             "email": "shawn@shawnhooper.ca"
         }
     ],
-    "minimum-stability": "stable"
-} 
+    "minimum-stability": "stable",
+    "require-dev": {
+        "phpunit/phpunit": "^12.1"
+    }
+}

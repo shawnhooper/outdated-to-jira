@@ -91,7 +91,7 @@ class JiraService
     /**
      * Creates a single JIRA ticket for an outdated dependency.
      */
-    private function createTicket(Dependency $dependency): ?string
+    public function createTicket(Dependency $dependency): ?string
     {
         // --- Check for existing duplicate ticket ---
         $existingKey = $this->findExistingTicket($dependency);
@@ -262,7 +262,7 @@ class JiraService
     }
 
      // --- Optional: Duplicate Checking ---
-     private function findExistingTicket(Dependency $dependency): ?string {
+     public function findExistingTicket(Dependency $dependency): ?string {
          // echo "[DIAGNOSTIC] Entering findExistingTicket for: {$dependency->name}" . PHP_EOL; // REMOVE
          // Construct the exact summary we would use for a new ticket
          $summary = sprintf(
