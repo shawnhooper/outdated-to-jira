@@ -6,7 +6,7 @@ This application automates the process of tracking outdated Composer and npm dep
 
 *   **Composer Support:** Runs `composer outdated --format=json` in the project directory.
 *   **NPM Support:** Runs `npm outdated --json` in the project directory.
-*   **JIRA Integration:** Creates JIRA tickets in a specified project for each identified outdated dependency.
+*   **JIRA Integration:** Creates JIRA tickets in a specified project for each identified outdated dependency. Automatically sets ticket priority based on SemVer update level (MAJOR/MINOR/PATCH).
 *   **Configurable:** Allows configuration of JIRA connection details (URL, API token, project key, issue type).
 *   **Filtering:** Allows processing only specific packages specified via command-line options.
 *   **Duplicate Prevention:** (Optional - currently commented out in `JiraService.php`) Checks for existing JIRA tickets for the same dependency and version before creating a new one.
@@ -76,6 +76,17 @@ This project includes unit tests written using PHPUnit to verify the core compon
     vendor/bin/phpunit
     ```
 
+## Continuous Integration
+
+This project uses GitHub Actions for Continuous Integration (CI). The workflow is defined in `.github/workflows/ci.yml` and includes the following:
+
+*   **Triggers:** Runs automatically on pushes to the `main` and `staging` branches, and on any pull request targeting these branches.
+*   **Jobs:**
+    *   **Testing:** Runs the PHPUnit test suite across multiple PHP versions (defined in the workflow matrix) to ensure compatibility.
+*   **Caching:** Caches Composer dependencies to speed up build times.
+
+This helps ensure that code changes maintain functionality and compatibility.
+
 ## Workflow
 
 1.  **Parse Arguments:** Get the path to the dependency file and check for options like `--dry-run` and `--package`.
@@ -92,6 +103,8 @@ This project includes unit tests written using PHPUnit to verify the core compon
 10. **Create JIRA Tickets:** For each remaining outdated dependency:
     *   (Optional) Check if a similar ticket already exists in JIRA.
     *   Construct the JIRA ticket details (summary, description, labels, etc.).
+        *   Determines the SemVer level difference (MAJOR, MINOR, PATCH) between the current and latest version.
+        *   Sets the JIRA ticket priority based on the SemVer level (e.g., MAJOR updates might be set to 'Emergency' or 'Highest', Minor to 'High', etc. - configurable in `JiraService.php`).
     *   If not a dry run, use the JIRA API to create the issue.
     *   Log the created ticket ID (or simulated key) or any errors.
 11. **Report:** Output a summary of actions taken (tickets created/simulated, skipped, errors).
