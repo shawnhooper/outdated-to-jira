@@ -111,6 +111,16 @@ class JiraService
              return self::DRY_RUN_WOULD_CREATE; // Return special indicator
         }
 
+        // --- Determine SemVer level for Priority ---
+        $semVerLevel = $this->getSemVerLevel($dependency->currentVersion, $dependency->latestVersion);
+        // Assuming these Priority names exist in JIRA
+        $priorityName = match($semVerLevel) {
+            'MAJOR' => 'Emergency',
+            'MINOR' => 'High',
+            'PATCH' => 'Medium',
+            default => 'Low' // Default for UNKNOWN
+        };
+
         // --- Proceed with actual creation if not dry run and no existing ticket ---
         $summary = sprintf(
             'Update %s package %s from %s to %s',
@@ -186,6 +196,10 @@ class JiraService
                 ],
                 'summary' => $summary,
                 'description' => $descriptionPayload,
+                 // Add Priority based on SemVer level
+                 'priority' => [
+                     'name' => $priorityName
+                 ],
                  // Optional: Add labels
                  'labels' => [
                      'outdated-dependency',
@@ -345,4 +359,36 @@ class JiraService
               return null; // Proceed with creation on error?
          }
      }
+
+     // Method to determine SemVer level difference
+    private function getSemVerLevel(string $currentVersion, string $latestVersion): string
+    {
+        $normalize = fn($v) => ltrim(strtok($v, '-'), 'v'); // Remove 'v' prefix and suffixes like -beta
+
+        $currentNormalized = $normalize($currentVersion);
+        $latestNormalized = $normalize($latestVersion);
+
+        // Basic check for semantic versioning format (X.Y.Z)
+        if (!preg_match('/^\d+\.\d+\.\d+$/', $currentNormalized) || !preg_match('/^\d+\.\d+\.\d+$/', $latestNormalized)) {
+             // If not standard X.Y.Z, use version_compare for basic comparison
+             return version_compare($latestNormalized, $currentNormalized) > 0 ? 'UNKNOWN' : 'UNKNOWN'; // Or handle non-semver differently
+        }
+
+        $currentParts = explode('.', $currentNormalized);
+        $latestParts = explode('.', $latestNormalized);
+
+        // Use version_compare for robust comparison
+        if (version_compare($latestNormalized, $currentNormalized, '<=')) {
+            return 'UNKNOWN'; // latest is not newer or is same
+        }
+
+        if ($latestParts[0] !== $currentParts[0]) {
+            return 'MAJOR';
+        }
+        if ($latestParts[1] !== $currentParts[1]) {
+            return 'MINOR';
+        }
+        // version_compare already confirmed latest > current, and major/minor are same, so it must be patch or pre-release difference handled by normalize
+        return 'PATCH'; 
+    }
 } 

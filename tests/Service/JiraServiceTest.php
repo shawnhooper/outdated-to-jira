@@ -205,17 +205,43 @@ class JiraServiceTest extends TestCase
 
     public function testCreateTicketSuccess(): void
     {
-        $service = $this->createService(); // Not dry run
-        $dependency = new Dependency('test/package', '1.0.0', '1.1.0', 'composer');
+        $service = $this->createService();
+        $dependency = new Dependency('test/package', '1.0.0', '2.1.0', 'composer'); // MAJOR update
         $newKey = 'TEST-557';
+        
+        // Expected summary (simple format)
+        $expectedSummary = sprintf(
+            'Update %s package %s from %s to %s',
+            ucfirst($dependency->packageManager),
+            $dependency->name,
+            $dependency->currentVersion,
+            $dependency->latestVersion
+        );
+        // Define expected priority for MAJOR update (CHANGED)
+        $expectedPriority = 'Emergency'; 
 
         // Mock findExistingTicket finding nothing
         $mockSearchResponse = json_encode(['total' => 0, 'issues' => []]);
         $this->mockHandler->append(new Response(200, [], $mockSearchResponse));
 
-        // Mock successful POST response for issue creation
+        // Mock successful POST response
         $mockCreateResponse = json_encode(['key' => $newKey, 'id' => '12345', 'self' => '...']);
-        $this->mockHandler->append(new Response(201, [], $mockCreateResponse)); // 201 Created
+        
+        // Use callable to assert the request payload includes priority
+        $this->mockHandler->append(function (Request $request, array $options) use ($mockCreateResponse, $expectedSummary, $expectedPriority) { 
+            $body = $request->getBody()->getContents();
+            $payload = json_decode($body, true);
+
+            $this->assertNotNull($payload);
+            $this->assertEquals($expectedSummary, $payload['fields']['summary'] ?? null);
+            // Assert the priority field (CHANGED)
+            $this->assertEquals($expectedPriority, $payload['fields']['priority']['name'] ?? null);
+            // Optionally add back description checks if needed
+            // $descriptionText = json_encode($payload['fields']['description'] ?? []);
+            // $this->assertStringContainsString(...);
+
+            return new Response(201, [], $mockCreateResponse);
+        });
 
         $result = $service->createTicket($dependency);
         $this->assertEquals($newKey, $result);
