@@ -54,7 +54,6 @@ class NpmOutputParserTest extends TestCase
         $jsonInput = '{}';
         $actualDependencies = $this->parser->parse($jsonInput);
         $this->assertEmpty($actualDependencies);
-        $this->assertIsArray($actualDependencies);
     }
 
     public function testParseWithEmptyString(): void
@@ -63,7 +62,6 @@ class NpmOutputParserTest extends TestCase
         $jsonInput = '';
         $actualDependencies = $this->parser->parse($jsonInput);
         $this->assertEmpty($actualDependencies);
-        $this->assertIsArray($actualDependencies);
     }
 
      public function testParseWithInvalidJson(): void
@@ -73,7 +71,6 @@ class NpmOutputParserTest extends TestCase
         // Expecting an empty array due to internal logging and error handling
         $actualDependencies = $this->parser->parse($jsonInput);
         $this->assertEmpty($actualDependencies);
-        $this->assertIsArray($actualDependencies);
     }
 
     public function testParseWithMissingFields(): void

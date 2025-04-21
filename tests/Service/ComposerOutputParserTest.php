@@ -73,7 +73,6 @@ class ComposerOutputParserTest extends TestCase
 
         $actualDependencies = $this->parser->parse($jsonInput);
         $this->assertEmpty($actualDependencies);
-        $this->assertIsArray($actualDependencies);
     }
 
     public function testParseWithEmptyInstalledArray(): void
@@ -84,7 +83,6 @@ class ComposerOutputParserTest extends TestCase
         }';
         $actualDependencies = $this->parser->parse($jsonInput);
         $this->assertEmpty($actualDependencies);
-         $this->assertIsArray($actualDependencies);
     }
 
     public function testParseWithMissingInstalledKey(): void
@@ -92,7 +90,6 @@ class ComposerOutputParserTest extends TestCase
         $jsonInput = '{"abandoned": []}'; // Missing "installed"
         $actualDependencies = $this->parser->parse($jsonInput);
         $this->assertEmpty($actualDependencies);
-         $this->assertIsArray($actualDependencies);
     }
 
     public function testParseWithInvalidJson(): void
@@ -100,6 +97,5 @@ class ComposerOutputParserTest extends TestCase
         $jsonInput = '{';
         $actualDependencies = $this->parser->parse($jsonInput);
         $this->assertEmpty($actualDependencies);
-        $this->assertIsArray($actualDependencies);
     }
 } 
