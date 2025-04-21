@@ -15,6 +15,7 @@ set_error_handler(function ($severity, $message, $file, $line) {
 });
 
 set_exception_handler(function ($exception) {
+    // phpcs:ignore Generic.Files.LineLength.TooLong
     fwrite(STDERR, sprintf("[ERROR] Uncaught Exception: %s in %s:%d\n", $exception->getMessage(), $exception->getFile(), $exception->getLine()));
     // Optionally log stack trace to stderr
     // fwrite(STDERR, $exception->getTraceAsString() . "\n");
@@ -110,11 +111,10 @@ try {
 
     // You could potentially set GitHub Action outputs here if needed
     // echo "::set-output name=summary::" . json_encode($summary);
-
 } catch (\Exception $e) {
     $logger->error('Service processing failed.', ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
     exit(1); // Exit with error code
 }
 
 $logger->info('Action runner script finished successfully.');
-exit(0); // Explicitly exit with success code 
+exit(0); // Explicitly exit with success code
