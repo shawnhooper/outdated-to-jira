@@ -1,0 +1,32 @@
+# Composer dependencies
+/vendor/
+
+# Environment configuration
+# IMPORTANT: Never commit your .env file!
+.env
+.env.*
+!.env.example
+
+# Composer lock file (optional, depends on your workflow)
+# If you want all developers/deployments to use the exact same dependencies,
+# commit composer.lock. If you want dependencies to be updated based on
+# composer.json constraints upon install, ignore it.
+# composer.lock
+
+# Symfony cache/log files (if using Symfony Framework)
+# /var/
+
+# PHPUnit cache
+/.phpunit.cache/
+
+# IDE specific files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# macOS specific files
+.DS_Store
+
+# Windows specific files
+Thumbs.db 

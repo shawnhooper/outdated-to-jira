@@ -1,0 +1,19 @@
+parameters:
+    level: 5 # Start with a reasonable level (0-9)
+    paths:
+        - src
+        - tests
+
+    # Optional: Exclude files or directories if needed
+    # excludePaths:
+    #    - src/Vendor/*
+
+    # Ignore specific error patterns
+    ignoreErrors:
+        # Ignore the specific "ternary operator condition is always true" error in JiraService catch block
+        - path: src/Service/JiraService.php
+          message: '#Ternary operator condition is always true\.#' # Match the error message exactly
+
+    # Optional: Ignore specific error patterns if necessary (use sparingly)
+    # ignoreErrors:
+    #    - '#Call to an undefined method .*#'

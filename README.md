@@ -1,67 +1,170 @@
 # Outdated Dependency Jira Ticket Creator
 
+[![CI](https://github.com/shawnhooper/outdated-to-jira/actions/workflows/ci.yml/badge.svg)](https://github.com/shawnhooper/outdated-to-jira/actions/workflows/ci.yml)
+
 This application automates the process of tracking outdated Composer and npm dependencies by creating JIRA tickets for each outdated package.
 
 ## Features
 
-*   **Composer Support:** Runs `composer outdated` and parses its output.
-*   **NPM Support:** Runs `npm outdated` and parses its output.
-*   **JIRA Integration:** Creates JIRA tickets in a specified project for each identified outdated dependency.
-*   **Configurable:** Allows configuration of JIRA connection details (URL, API token, project key) and package manager paths.
-*   **Duplicate Prevention:** (Optional) Checks for existing JIRA tickets for the same dependency and version before creating a new one.
+*   **Composer & NPM Support:** Checks for outdated dependencies using `composer outdated` or `npm outdated`.
+*   **JIRA Integration:** Creates JIRA tickets in a specified project for each identified outdated dependency. Automatically sets ticket priority based on SemVer update level (MAJOR/MINOR/PATCH).
+*   **Configurable:** Accepts JIRA connection details (URL, API token, project key, issue type) via configuration array.
+*   **Filtering:** Allows processing only specific packages.
+*   **Duplicate Prevention:** Checks for existing JIRA tickets for the same dependency and version before creating a new one.
+*   **PSR-3 Logging:** Uses a PSR-3 compliant logger for output.
+*   **GitHub Action:** Provides a ready-to-use GitHub Action for automated checks in CI/CD pipelines.
 
 ## Requirements
 
-*   PHP 8.0 or higher
-*   Composer
+*   PHP 8.2 or higher
+*   Composer (if checking composer.json)
+*   npm (if checking package.json)
 *   Access to a JIRA Cloud instance with API access.
 *   An API token for JIRA Cloud authentication.
 
-## Configuration
+## Installation (as a Library)
 
-The application will require configuration, likely through environment variables or a configuration file (`config.php` or `.env`), for the following:
-
-*   `JIRA_URL`: The base URL of your JIRA Cloud instance (e.g., `https://your-domain.atlassian.net`).
-*   `JIRA_USER_EMAIL`: The email address associated with the JIRA API token.
-*   `JIRA_API_TOKEN`: The JIRA Cloud API token.
-*   `JIRA_PROJECT_KEY`: The project key where tickets should be created (e.g., `PROJ`).
-*   `JIRA_ISSUE_TYPE`: The JIRA issue type for the tickets (e.g., `Task`, `Bug`).
-*   `COMPOSER_PROJECT_PATH`: The path to the PHP project directory containing the `composer.json` file.
-*   `NPM_PROJECT_PATH`: The path to the Node.js project directory containing the `package.json` file.
-
-## Usage
-
-The application will be run from the command line:
+Add this package as a development dependency to your project using Composer:
 
 ```bash
-php outdated-to-jira [--composer] [--npm] [--dry-run]
+composer require --dev shawnhooper/outdated-to-jira
 ```
 
-*   `--composer`: Process outdated Composer dependencies.
-*   `--npm`: Process outdated npm dependencies.
-*   If neither `--composer` nor `--npm` is specified, both are processed.
-*   `--dry-run`: Output the tickets that would be created without actually creating them in JIRA.
+## Library Usage
 
-## Workflow
+Instantiate the `DependencyCheckerService` and call its `process` method.
 
-1.  **Parse Arguments:** Determine which package managers to check (Composer, npm, or both) and if it's a dry run.
-2.  **Execute Outdated Command:**
-    *   For Composer: Run `composer outdated --format=json` in the `COMPOSER_PROJECT_PATH`.
-    *   For npm: Run `npm outdated --json` in the `NPM_PROJECT_PATH`.
-3.  **Parse Output:** Extract the list of outdated dependencies, including package name, current version, and latest version.
-4.  **Connect to JIRA:** Authenticate with the JIRA Cloud API using the provided credentials.
-5.  **Create JIRA Tickets:** For each outdated dependency:
-    *   (Optional) Check if a similar ticket already exists in JIRA.
-    *   Construct the JIRA ticket details (summary, description, labels, etc.).
-    *   Use the JIRA API to create the issue.
-    *   Log the created ticket ID or any errors.
-6.  **Report:** Output a summary of actions taken (tickets created, skipped, errors).
+```php
+<?php
 
-## Future Enhancements
+require 'vendor/autoload.php';
 
-*   Support for other package managers (e.g., `yarn`, `pip`).
-*   More sophisticated duplicate ticket detection.
-*   Assigning tickets to specific users.
-*   Setting custom fields in JIRA tickets.
-*   Allowing configuration via a YAML or JSON file instead of environment variables.
-*   Batching API requests to JIRA.
+use App\Service\DependencyCheckerService;
+use Monolog\Logger; // Or your preferred PSR-3 Logger
+use Monolog\Handler\StreamHandler;
+
+// 1. Configure JIRA details (load from .env, config files, etc.)
+$jiraConfig = [
+    'jira_url' => 'https://your-domain.atlassian.net',
+    'jira_user_email' => 'your-email@example.com',
+    'jira_api_token' => getenv('JIRA_API_TOKEN'), // Get token securely!
+    'jira_project_key' => 'YOUR_PROJECT_KEY',
+    'jira_issue_type' => 'Task',
+    'dry_run' => false, // Set to true to simulate
+];
+
+// 2. Create a PSR-3 Logger instance
+$logger = new Logger('MyApplication');
+$logger->pushHandler(new StreamHandler('php://stdout', Logger::INFO));
+
+// 3. Instantiate the service
+$checkerService = new DependencyCheckerService($jiraConfig, $logger);
+
+// 4. Define the path to your dependency file and optional filters
+$dependencyFilePath = __DIR__ . '/path/to/your/composer.json'; // Or package.json
+$packagesToFilter = ['some/package', 'another/vendor']; // Optional
+
+// 5. Process the dependencies
+try {
+    $results = $checkerService->process($dependencyFilePath, $packagesToFilter);
+
+    $logger->info("Processing Results:", $results);
+
+    // Example: Check status for a specific package
+    if (isset($results['some/package'])) {
+        $status = $results['some/package'][DependencyCheckerService::RESULT_STATUS_KEY];
+        $jiraKey = $results['some/package'][DependencyCheckerService::RESULT_JIRA_KEY];
+        $logger->info("Status for some/package: {$status}" . ($jiraKey ? " ({$jiraKey})" : ''));
+    }
+
+} catch (\InvalidArgumentException $e) {
+    $logger->error("Configuration or file path error: " . $e->getMessage());
+} catch (\RuntimeException $e) {
+    $logger->error("Processing error: " . $e->getMessage());
+} catch (\Exception $e) {
+    $logger->error("An unexpected error occurred: " . $e->getMessage());
+}
+
+```
+
+### Return Values
+
+The `process` method returns an associative array where keys are dependency names. Each value is another array containing:
+
+*   `DependencyCheckerService::RESULT_STATUS_KEY`: A string indicating the outcome (e.g., `STATUS_TICKET_CREATED`, `STATUS_EXISTING_TICKET`, `STATUS_DRY_RUN_WOULD_CREATE`, `STATUS_FILTERED_OUT`, `STATUS_PROCESSING_ERROR`).
+*   `DependencyCheckerService::RESULT_JIRA_KEY`: The created or found JIRA issue key (string), or `null` if not applicable.
+
+## Testing
+
+This project includes unit tests written using PHPUnit to verify the core components.
+
+1.  **Install Dependencies:** Ensure you have installed the development dependencies:
+    ```bash
+    composer install
+    ```
+2.  **Run Tests:** Execute the test suite using the following command from the project root:
+    ```bash
+    vendor/bin/phpunit
+    ```
+
+## Continuous Integration
+
+This project uses GitHub Actions for Continuous Integration (CI). The workflow is defined in `.github/workflows/ci.yml` and includes the following:
+
+*   **Triggers:** Runs automatically on pushes to the `main` and `staging` branches, and on any pull request targeting these branches.
+*   **Jobs:**
+    *   **Testing:** Runs the PHPUnit test suite across multiple PHP versions (defined in the workflow matrix) to ensure compatibility.
+*   **Caching:** Caches Composer dependencies to speed up build times.
+
+This helps ensure that code changes maintain functionality and compatibility.
+
+## Using as a GitHub Action
+
+This tool can also be run as a GitHub Action within your own workflows.
+
+**Example Workflow:**
+
+```yaml
+name: Check Dependencies
+
+on: 
+  schedule:
+    # Runs daily at midnight UTC
+    - cron: '0 0 * * *' 
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  check_and_create_tickets:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Outdated Dependency Check
+        uses: shawnhooper/outdated-to-jira@staging # Or use @main or a specific tag/commit
+        with:
+          dependency-file: 'path/to/your/composer.json' # Or package.json
+          # Optional inputs:
+          # dry-run: 'true' 
+          # packages: 'package1 package2'
+          
+          # Required JIRA configuration (use secrets!)
+          jira-url: ${{ secrets.JIRA_URL }}
+          jira-user-email: ${{ secrets.JIRA_USER_EMAIL }}
+          jira-api-token: ${{ secrets.JIRA_API_TOKEN }}
+          jira-project-key: ${{ secrets.JIRA_PROJECT_KEY }}
+          jira-issue-type: 'Task' # Or your desired issue type
+```
+
+**Action Inputs:**
+
+*   `dependency-file` (Required): Path to `composer.json` or `package.json` relative to the root of the repository where the workflow runs.
+*   `dry-run` (Optional): Set to `'true'` to simulate without creating tickets. Defaults to `'false'`.
+*   `packages` (Optional): A space-separated string of package names to filter for.
+*   `jira-url` (Required): Base URL of your JIRA instance.
+*   `jira-user-email` (Required): Email address for JIRA API authentication.
+*   `jira-api-token` (Required): JIRA API token for authentication (**Use GitHub Secrets**).
+*   `jira-project-key` (Required): JIRA project key.
+*   `jira-issue-type` (Required): JIRA issue type name (e.g., `Task`, `Bug`).
+
+**Important:** Store sensitive values like `JIRA_API_TOKEN`, `JIRA_USER_EMAIL`, and potentially `JIRA_URL` as encrypted [GitHub Secrets](https://docs.github.com/en/actions/security-guides/using-secrets-in-github-actions) in the repository that *uses* this action.

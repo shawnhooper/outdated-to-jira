@@ -1,0 +1,56 @@
+name: 'Outdated Dependency to JIRA'
+description: 'Checks for outdated Composer/npm dependencies and creates JIRA tickets.'
+author: 'Shawn Hooper <shawn@shawnhooper.ca>'
+
+# Define inputs the action accepts
+inputs:
+  dependency-file:
+    description: 'Path to composer.json or package.json relative to the repository root.'
+    required: true
+  dry-run:
+    description: 'Set to "true" to simulate without creating tickets.'
+    required: false
+    default: 'false'
+  packages:
+    description: 'Space-separated list of package names to filter for.'
+    required: false
+    default: ''
+  jira-url:
+    description: 'Base URL of the JIRA instance (e.g., https://your-domain.atlassian.net).'
+    required: true
+  jira-user-email:
+    description: 'Email address for JIRA API authentication.'
+    required: true
+  jira-api-token:
+    description: 'JIRA API token for authentication.'
+    required: true
+  jira-project-key:
+    description: 'JIRA project key where tickets should be created.'
+    required: true
+  jira-issue-type:
+    description: 'JIRA issue type to use for created tickets (e.g., Task).'
+    required: true
+
+# Define outputs the action might produce (optional)
+# outputs:
+#   created-tickets:
+#     description: 'JSON string mapping package names to created/existing JIRA keys.'
+
+# Define how the action runs
+runs:
+  using: 'docker'
+  image: 'Dockerfile'
+  # Pass inputs as environment variables to the container (easier for PHP to read)
+  # Note: GitHub automatically converts input names to uppercase env vars prefixed with INPUT_
+  # e.g., inputs.dependency-file becomes INPUT_DEPENDENCY-FILE
+  # We can also define custom env vars for JIRA credentials
+  env:
+    DEPENDENCY_FILE: ${{ inputs.dependency-file }}
+    DRY_RUN: ${{ inputs.dry-run }}
+    PACKAGES: ${{ inputs.packages }}
+    # These MUST be provided by the calling workflow, likely using secrets
+    JIRA_URL: ${{ inputs.jira-url }}
+    JIRA_USER_EMAIL: ${{ inputs.jira-user-email }}
+    JIRA_API_TOKEN: ${{ inputs.jira-api-token }}
+    JIRA_PROJECT_KEY: ${{ inputs.jira-project-key }}
+    JIRA_ISSUE_TYPE: ${{ inputs.jira-issue-type }} 

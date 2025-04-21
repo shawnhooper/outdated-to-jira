@@ -1,0 +1,24 @@
+name: Release Please
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: google-github-actions/release-please-action@v4
+        with:
+          # This identifies the release type for changelog generation and versioning rules.
+          release-type: php
+          # Optional: If your composer.json is not at the root, specify the path.
+          # package-name: 'shawnhooper/outdated-to-jira' # Usually inferred
+          # Optional: If you want to include the v prefix in your tags (e.g., v1.0.0)
+          # command: manifest --version-file=composer.json --changelog-path=CHANGELOG.md --include-v
+          # Default is no 'v' prefix for PHP which aligns with Packagist best practices. 
