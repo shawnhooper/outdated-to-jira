@@ -114,11 +114,6 @@ class DependencyCheckerService
         }
 
         // --- Parse Output ---
-        if ($packageManagerOutput === null) {
-             $this->logger->error("No packageManager output available to parse.");
-             throw new \RuntimeException("Failed to get output from {$packageManager} outdated command.");
-        }
-
         $outdatedDependencies = [];
         try {
             $outdatedDependencies = $parser->parse($packageManagerOutput);
