@@ -52,54 +52,95 @@ $requiredEnv = [
         $logger = new ConsoleLogger($output);
         $logger->info('Starting Outdated Dependency Check...');
 
+        // Check if running inside GitHub Actions
+        $isGitHubAction = getenv('GITHUB_ACTIONS') === 'true';
+
+        // --- Argument/Option Retrieval (remains the same) ---
         $isDryRun = $input->getOption('dry-run');
         $dependencyFilePath = $input->getArgument('dependency-file');
         $packagesToFilter = $input->getOption('package');
-        $dependencyFileName = basename($dependencyFilePath);
+
+        // Determine working directory for non-Action runs
         $workingDirectory = dirname($dependencyFilePath);
+        $dependencyFileName = basename($dependencyFilePath);
 
-        // --- Load .env configuration ---
-        $workingEnvPath = $workingDirectory . '/.env';
-        $scriptEnvPath = __DIR__ . '/.env';
-        $loadedPaths = [];
+        // --- Load .env configuration ONLY if NOT running as GitHub Action ---
+        if (!$isGitHubAction) {
+            $logger->debug('Running as CLI, attempting to load .env files...');
+            $workingEnvPath = $workingDirectory . '/.env';
+            $scriptEnvPath = __DIR__ . '/.env';
+            $loadedPaths = [];
 
-        if (file_exists($workingEnvPath)) {
-            $logger->debug('Loading environment variables from project directory', ['path' => $workingEnvPath]);
-            try {
-                Dotenv::createImmutable($workingDirectory)->safeLoad();
-                $loadedPaths[] = $workingEnvPath;
-            } catch (\Exception $e) {
-                $logger->warning('Failed to load .env from project directory', ['path' => $workingEnvPath, 'error' => $e->getMessage()]);
+            if (file_exists($workingEnvPath)) {
+                $logger->debug('Loading environment variables from project directory', ['path' => $workingEnvPath]);
+                try {
+                    Dotenv::createImmutable($workingDirectory)->safeLoad();
+                    $loadedPaths[] = $workingEnvPath;
+                } catch (\Exception $e) {
+                    $logger->warning('Failed to load .env from project directory', ['path' => $workingEnvPath, 'error' => $e->getMessage()]);
+                }
             }
-        }
 
-        // Load from script directory if it exists and is different from the working dir .env path
-        if (file_exists($scriptEnvPath) && realpath($scriptEnvPath) !== realpath($workingEnvPath)) {
-            $logger->debug('Loading environment variables from script directory', ['path' => $scriptEnvPath]);
-             try {
-                 // Load, but variables from working dir .env (already in $_ENV) won't be overwritten
-                 Dotenv::createImmutable(__DIR__)->safeLoad();
-                 $loadedPaths[] = $scriptEnvPath;
-             } catch (\Exception $e) {
-                $logger->warning('Failed to load .env from script directory', ['path' => $scriptEnvPath, 'error' => $e->getMessage()]);
+            if (file_exists($scriptEnvPath) && realpath($scriptEnvPath) !== realpath($workingEnvPath)) {
+                $logger->debug('Loading environment variables from script directory', ['path' => $scriptEnvPath]);
+                 try {
+                     Dotenv::createImmutable(__DIR__)->safeLoad();
+                     $loadedPaths[] = $scriptEnvPath;
+                 } catch (\Exception $e) {
+                    $logger->warning('Failed to load .env from script directory', ['path' => $scriptEnvPath, 'error' => $e->getMessage()]);
+                 }
+            }
+
+            if (empty($loadedPaths)) {
+                $logger->debug('.env file not found in project or script directory, or failed to load.');
+            }
+        } else {
+            $logger->info('Running as GitHub Action, skipping .env file loading. Expecting credentials via environment variables.');
+            // In GitHub Actions, working directory for commands should be GITHUB_WORKSPACE
+            $workingDirectory = getenv('GITHUB_WORKSPACE') ?: '.'; 
+        }
+        // --- End Conditional .env loading ---
+
+        // --- Validate Input File (adjust path check for actions) ---
+        // The path received from CLI is relative to where user ran it.
+        // The path received from Action input is relative to workspace root.
+        // The entrypoint already prepends /github/workspace/
+        $effectiveDependencyPath = $dependencyFilePath; 
+        if ($isGitHubAction) {
+            // If action, the path received might already be effectively absolute within the container
+             // or the entrypoint script constructs the full path.
+             // Let's assume entrypoint provides the full path now.
+             $effectiveDependencyPath = $dependencyFilePath; // Use path passed directly
+             $workingDirectory = dirname($effectiveDependencyPath); // Set working dir based on action input
+             $dependencyFileName = basename($effectiveDependencyPath);
+        } else {
+             // Non-action: Path might be relative, resolve it
+             if (!file_exists($dependencyFilePath)) {
+                // Try resolving relative to current dir if it doesn't exist as is
+                 $tryPath = getcwd() . '/' . $dependencyFilePath;
+                 if (file_exists($tryPath)) {
+                     $dependencyFilePath = $tryPath;
+                 } // else fall through to the main check below
              }
+             $effectiveDependencyPath = $dependencyFilePath; // Use possibly resolved path
+             $workingDirectory = dirname($effectiveDependencyPath); // Working dir based on file
+             $dependencyFileName = basename($effectiveDependencyPath);
         }
 
-        if (empty($loadedPaths)) {
-            $logger->debug('.env file not found in project or script directory, or failed to load.');
-        }
 
-        // --- Validate Input File ---
-        if (!file_exists($dependencyFilePath)) {
-            $logger->error("Dependency file not found: {$dependencyFilePath}");
+        $logger->debug('Effective file path', ['path' => $effectiveDependencyPath]);
+        $logger->debug('Effective working directory', ['dir' => $workingDirectory]);
+
+        if (!file_exists($effectiveDependencyPath)) {
+            $logger->error("Dependency file not found: {$effectiveDependencyPath}");
             return Command::FAILURE;
         }
-        if (!is_file($dependencyFilePath)) {
-             $logger->error("Provided path is not a file: {$dependencyFilePath}");
+        if (!is_file($effectiveDependencyPath)) {
+             $logger->error("Provided path is not a file: {$effectiveDependencyPath}");
              return Command::FAILURE;
         }
-        if (!is_readable($dependencyFilePath)) {
-             $logger->error("Dependency file is not readable: {$dependencyFilePath}");
+        if (!is_readable($effectiveDependencyPath)) {
+             $logger->error("Dependency file is not readable: {$effectiveDependencyPath}");
              return Command::FAILURE;
         }
 
@@ -166,10 +207,10 @@ $requiredEnv = [
             $cacheFilePath = null;
         } else {
             // Use MD5 hash of the absolute path for a unique, filesystem-safe key
-            $absoluteDependencyPath = realpath($dependencyFilePath);
+            $absoluteDependencyPath = realpath($effectiveDependencyPath);
             if (!$absoluteDependencyPath) {
-                 $logger->warning("Could not resolve absolute path for: {$dependencyFilePath}. Caching might be unreliable.");
-                 $cacheKey = md5($dependencyFilePath); // Fallback to relative path hash
+                 $logger->warning("Could not resolve absolute path for: {$effectiveDependencyPath}. Caching might be unreliable.");
+                 $cacheKey = md5($effectiveDependencyPath); // Fallback to relative path hash
             } else {
                  $cacheKey = md5($absoluteDependencyPath);
             }

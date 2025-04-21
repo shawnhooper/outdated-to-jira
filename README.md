@@ -15,7 +15,7 @@ This application automates the process of tracking outdated Composer and npm dep
 
 ## Requirements
 
-*   PHP 8.0 or higher
+*   PHP 8.2 or higher
 *   Composer (if checking composer.json)
 *   npm (if checking package.json)
 *   Access to a JIRA Cloud instance with API access.
@@ -23,7 +23,9 @@ This application automates the process of tracking outdated Composer and npm dep
 
 ## Configuration
 
-The application requires JIRA connection details defined as environment variables.
+**Note:** The following instructions using `.env` files apply when running the tool directly from the command line (CLI). For configuration when using the GitHub Action, please refer to the "Using as a GitHub Action" section.
+
+The application requires JIRA connection details defined as environment variables when run via CLI.
 
 It loads settings from `.env` files in a layered approach:
 
@@ -89,34 +91,53 @@ This project uses GitHub Actions for Continuous Integration (CI). The workflow i
 
 This helps ensure that code changes maintain functionality and compatibility.
 
-## Workflow
+## Using as a GitHub Action
 
-1.  **Parse Arguments:** Get the path to the dependency file and check for options like `--dry-run` and `--package`.
-2.  **Determine Working Directory & Script Directory:** Identify relevant paths.
-3.  **Load Configuration:** Attempt to load `.env` file first from working directory, then from script directory (values from working directory take precedence). Read JIRA connection details from environment variables.
-4.  **Validate Input:** Check if the dependency file exists and is either `composer.json` or `package.json`.
-5.  **Determine Package Manager:** Identify the package manager type (composer/npm).
-6.  **Execute Outdated Command:**
-    *   If `composer.json`: Run `composer outdated --format=json` in the determined directory.
-    *   If `package.json`: Run `npm outdated --json` in the determined directory.
-7.  **Parse Output:** Extract the list of outdated dependencies, including package name, current version, and latest version.
-8.  **Filter Dependencies:** If `--package` options were provided, filter the list to include only those specified packages.
-9.  **Connect to JIRA:** Authenticate with the JIRA Cloud API using the provided credentials.
-10. **Create JIRA Tickets:** For each remaining outdated dependency:
-    *   (Optional) Check if a similar ticket already exists in JIRA.
-    *   Construct the JIRA ticket details (summary, description, labels, etc.).
-        *   Determines the SemVer level difference (MAJOR, MINOR, PATCH) between the current and latest version.
-        *   Sets the JIRA ticket priority based on the SemVer level (e.g., MAJOR updates might be set to 'Emergency' or 'Highest', Minor to 'High', etc. - configurable in `JiraService.php`).
-    *   If not a dry run, use the JIRA API to create the issue.
-    *   Log the created ticket ID (or simulated key) or any errors.
-11. **Report:** Output a summary of actions taken (tickets created/simulated, skipped, errors).
+This tool can also be run as a GitHub Action within your own workflows.
 
-## Future Enhancements
+**Example Workflow:**
 
-*   Support for other package managers (e.g., `yarn`, `pip`) by extending the file detection and command execution logic.
-*   Enable and refine duplicate ticket detection in `JiraService.php`.
-*   Assigning tickets to specific users.
-*   Setting custom fields in JIRA tickets.
-*   Allowing configuration via a YAML or JSON file instead of environment variables.
-*   Batching API requests to JIRA for performance.
-*   Add options for specifying JIRA fields like labels or components via CLI arguments.
+```yaml
+name: Check Dependencies
+
+on: 
+  schedule:
+    # Runs daily at midnight UTC
+    - cron: '0 0 * * *' 
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  check_and_create_tickets:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Outdated Dependency Check
+        uses: shawnhooper/outdated-to-jira@staging # Or use @main or a specific tag/commit
+        with:
+          dependency-file: 'path/to/your/composer.json' # Or package.json
+          # Optional inputs:
+          # dry-run: 'true' 
+          # packages: 'package1 package2'
+          
+          # Required JIRA configuration (use secrets!)
+          jira-url: ${{ secrets.JIRA_URL }}
+          jira-user-email: ${{ secrets.JIRA_USER_EMAIL }}
+          jira-api-token: ${{ secrets.JIRA_API_TOKEN }}
+          jira-project-key: ${{ secrets.JIRA_PROJECT_KEY }}
+          jira-issue-type: 'Task' # Or your desired issue type
+```
+
+**Action Inputs:**
+
+*   `dependency-file` (Required): Path to `composer.json` or `package.json` relative to the root of the repository where the workflow runs.
+*   `dry-run` (Optional): Set to `'true'` to simulate without creating tickets. Defaults to `'false'`.
+*   `packages` (Optional): A space-separated string of package names to filter for.
+*   `jira-url` (Required): Base URL of your JIRA instance.
+*   `jira-user-email` (Required): Email address for JIRA API authentication.
+*   `jira-api-token` (Required): JIRA API token for authentication (**Use GitHub Secrets**).
+*   `jira-project-key` (Required): JIRA project key.
+*   `jira-issue-type` (Required): JIRA issue type name (e.g., `Task`, `Bug`).
+
+**Important:** Store sensitive values like `JIRA_API_TOKEN`, `JIRA_USER_EMAIL`, and potentially `JIRA_URL` as encrypted [GitHub Secrets](https://docs.github.com/en/actions/security-guides/using-secrets-in-github-actions) in the repository that *uses* this action.
