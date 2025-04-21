@@ -11,5 +11,6 @@ class Dependency
         public readonly string $currentVersion,
         public readonly string $latestVersion,
         public readonly string $packageManager // 'composer' or 'npm'
-    ) {}
-} 
+    ) {
+    }
+}

@@ -64,10 +64,10 @@ class NpmOutputParserTest extends TestCase
         $this->assertEmpty($actualDependencies);
     }
 
-     public function testParseWithInvalidJson(): void
+    public function testParseWithInvalidJson(): void
     {
         $jsonInput = '{'; // Intentionally invalid JSON
-        
+
         // Expecting an empty array due to internal logging and error handling
         $actualDependencies = $this->parser->parse($jsonInput);
         $this->assertEmpty($actualDependencies);
@@ -91,12 +91,12 @@ class NpmOutputParserTest extends TestCase
         // Expect only the valid entry to be parsed
          $expectedDependencies = [
             new Dependency('react', '17.0.2', '18.3.1', 'npm'),
-        ];
+         ];
 
-        $actualDependencies = $this->parser->parse($jsonInput);
+         $actualDependencies = $this->parser->parse($jsonInput);
          $this->assertCount(1, $actualDependencies, 'Expected exactly one dependency to be parsed.');
          $this->assertInstanceOf(Dependency::class, $actualDependencies[0], 'The parsed item should be a Dependency object.');
-         
+
          /** @var Dependency $parsedDep */
          $parsedDep = $actualDependencies[0];
          $this->assertEquals('react', $parsedDep->name);
@@ -104,4 +104,4 @@ class NpmOutputParserTest extends TestCase
          $this->assertEquals('18.3.1', $parsedDep->latestVersion);
          $this->assertEquals('npm', $parsedDep->packageManager);
     }
-} 
+}

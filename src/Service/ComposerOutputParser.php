@@ -47,16 +47,16 @@ class ComposerOutputParser
                 if (!isset($package['name'], $package['version'], $package['latest'])) {
                      $this->logger->warning('Skipping incomplete package entry in Composer "installed" output.', ['package' => $package]);
                      continue;
-                 }
+                }
                 $dependencies[] = new Dependency(
                     $package['name'],
                     $package['version'],
                     $package['latest'],
                     'composer'
                 );
-             }
+            }
         }
 
         return $dependencies;
     }
-} 
+}

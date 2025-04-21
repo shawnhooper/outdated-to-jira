@@ -98,4 +98,4 @@ class ComposerOutputParserTest extends TestCase
         $actualDependencies = $this->parser->parse($jsonInput);
         $this->assertEmpty($actualDependencies);
     }
-} 
+}

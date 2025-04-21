@@ -62,4 +62,4 @@ class NpmOutputParser
 
         return $dependencies;
     }
-} 
+}

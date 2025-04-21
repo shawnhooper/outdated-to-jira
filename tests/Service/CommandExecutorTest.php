@@ -20,7 +20,7 @@ class CommandExecutorTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        
+
         // Set up the mock process object that the factory will return
         $this->mockProcess = $this->createMock(Process::class);
 
@@ -28,7 +28,7 @@ class CommandExecutorTest extends TestCase
         // We capture $this->mockProcess by reference using `use`
         $this->mockProcessFactory = function (array $command, string $cwd) {
              // Optionally: Add assertions here to check $command and $cwd if needed
-             // $this->assertEquals(['ls', '-la'], $command); 
+             // $this->assertEquals(['ls', '-la'], $command);
              // $this->assertEquals('/tmp', $cwd);
              return $this->mockProcess;
         };
@@ -83,4 +83,4 @@ class CommandExecutorTest extends TestCase
 
         $this->executor->execute($command, $cwd);
     }
-} 
+}

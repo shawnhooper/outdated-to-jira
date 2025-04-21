@@ -49,7 +49,7 @@ class JiraService
         // Middleware for Logging (Restoring)
         // Re-enable the logger
         $stack->push(Middleware::log($this->logger, new \GuzzleHttp\MessageFormatter(
-             \GuzzleHttp\MessageFormatter::DEBUG
+            \GuzzleHttp\MessageFormatter::DEBUG
         )));
 
         $guzzleConfig = [
@@ -114,7 +114,7 @@ class JiraService
         // --- Determine SemVer level for Priority ---
         $semVerLevel = $this->getSemVerLevel($dependency->currentVersion, $dependency->latestVersion);
         // Assuming these Priority names exist in JIRA
-        $priorityName = match($semVerLevel) {
+        $priorityName = match ($semVerLevel) {
             'MAJOR' => 'Emergency',
             'MINOR' => 'High',
             'PATCH' => 'Medium',
@@ -151,7 +151,7 @@ class JiraService
                             'text' => sprintf(
                                 'The %s package ',
                                 $dependency->packageManager
-                             ),
+                            ),
                         ],
                         [
                              'type' => 'text',
@@ -219,7 +219,7 @@ class JiraService
                 'json' => $payload,
             ]);
 
-            // --- Simplified Diagnostics --- 
+            // --- Simplified Diagnostics ---
             $statusCode = $response->getStatusCode();
             $bodyContent = '';
             try {
@@ -246,11 +246,11 @@ class JiraService
                 if ($issueKey) {
                      $this->logger->info('Successfully created JIRA ticket.', ['key' => $issueKey, 'summary' => $summary]);
                      return $issueKey;
-                 } else {
-                      // Removed echo
-                      $this->logger->error('JIRA ticket created but key not found in response.', ['status' => $statusCode, 'response' => $bodyContent]);
-                      return null;
-                 }
+                } else {
+                     // Removed echo
+                     $this->logger->error('JIRA ticket created but key not found in response.', ['status' => $statusCode, 'response' => $bodyContent]);
+                     return null;
+                }
             } else {
                  // Removed echo
                  // Removed echo
@@ -280,85 +280,86 @@ class JiraService
     }
 
      // --- Optional: Duplicate Checking ---
-     public function findExistingTicket(Dependency $dependency): ?string {
-         // echo "[DIAGNOSTIC] Entering findExistingTicket for: {$dependency->name}" . PHP_EOL; // REMOVE
-         // Construct the exact summary we would use for a new ticket
-         $summary = sprintf(
-             'Update %s package %s from %s to %s',
-             ucfirst($dependency->packageManager),
-             $dependency->name,
-             $dependency->currentVersion,
-             $dependency->latestVersion
-         );
+    public function findExistingTicket(Dependency $dependency): ?string
+    {
+        // echo "[DIAGNOSTIC] Entering findExistingTicket for: {$dependency->name}" . PHP_EOL; // REMOVE
+        // Construct the exact summary we would use for a new ticket
+        $summary = sprintf(
+            'Update %s package %s from %s to %s',
+            ucfirst($dependency->packageManager),
+            $dependency->name,
+            $dependency->currentVersion,
+            $dependency->latestVersion
+        );
 
-         // JQL requires quotes within the string to be escaped with a backslash
-         $escapedSummary = str_replace('"', '\\"', $summary);
+        // JQL requires quotes within the string to be escaped with a backslash
+        $escapedSummary = str_replace('"', '\\"', $summary);
 
-         // Using fuzzy match `~` which is generally more robust for text fields
-         $jql = sprintf(
-             'project = "%s" AND summary ~ "%s" AND statusCategory != Done ORDER BY created DESC',
-             $this->config['jira_project_key'],
-             $escapedSummary // Use the escaped summary
-         );
+        // Using fuzzy match `~` which is generally more robust for text fields
+        $jql = sprintf(
+            'project = "%s" AND summary ~ "%s" AND statusCategory != Done ORDER BY created DESC',
+            $this->config['jira_project_key'],
+            $escapedSummary // Use the escaped summary
+        );
 
-         // echo "[DIAGNOSTIC] About to enter search try block for: {$dependency->name}" . PHP_EOL; // REMOVE
-         try {
-             $response = $this->httpClient->get('search', [
-                 'query' => ['jql' => $jql, 'fields' => 'key,summary', 'maxResults' => 5] // Fetch summary, check a few results
-             ]);
+        // echo "[DIAGNOSTIC] About to enter search try block for: {$dependency->name}" . PHP_EOL; // REMOVE
+        try {
+            $response = $this->httpClient->get('search', [
+                'query' => ['jql' => $jql, 'fields' => 'key,summary', 'maxResults' => 5] // Fetch summary, check a few results
+            ]);
 
-             $statusCode = $response->getStatusCode();
-             // Rewind the stream before reading contents, as logger might have read it
-             $response->getBody()->rewind(); 
-             $body = $response->getBody()->getContents();
+            $statusCode = $response->getStatusCode();
+            // Rewind the stream before reading contents, as logger might have read it
+            $response->getBody()->rewind();
+            $body = $response->getBody()->getContents();
 
-             if ($statusCode === 200) {
-                 $responseData = json_decode($body, true);
-                 // Check if decode failed
-                 if ($responseData === null && json_last_error() !== JSON_ERROR_NONE) {
-                     $this->logger->error('Failed to decode JIRA search response JSON.', [
-                         'json_error' => json_last_error_msg(),
-                         'response_body_preview' => substr($body, 0, 500) // Log preview
-                     ]);
-                     return null; // Treat decode failure as no duplicate found
-                 }
+            if ($statusCode === 200) {
+                $responseData = json_decode($body, true);
+                // Check if decode failed
+                if ($responseData === null && json_last_error() !== JSON_ERROR_NONE) {
+                    $this->logger->error('Failed to decode JIRA search response JSON.', [
+                        'json_error' => json_last_error_msg(),
+                        'response_body_preview' => substr($body, 0, 500) // Log preview
+                    ]);
+                    return null; // Treat decode failure as no duplicate found
+                }
 
-                 $this->logger->debug('JIRA Search API Response (200 OK)', ['jql' => $jql, 'response_data' => $responseData]);
+                $this->logger->debug('JIRA Search API Response (200 OK)', ['jql' => $jql, 'response_data' => $responseData]);
 
-                 // Check if total > 0 and issues exist
-                 if (isset($responseData['total']) && $responseData['total'] > 0 && isset($responseData['issues']) && is_array($responseData['issues'])) { 
-                     // Iterate through returned issues and check for EXACT summary match
-                     foreach ($responseData['issues'] as $issue) {
-                         if (isset($issue['fields']['summary']) && $issue['fields']['summary'] === $summary) {
-                             $foundKey = $issue['key'];
-                             $this->logger->debug('Found existing open JIRA ticket via search with exact summary match.', ['key' => $foundKey]);
-                             return $foundKey;
-                         }
-                     }
-                     // If loop completes without finding an exact match
-                     $this->logger->debug('Search returned issues, but none had an exact summary match.', ['expected_summary' => $summary]);
-                     return null;
-                 }
-                 // If total is 0 or issues array is missing/invalid
-                 // Restore original log message
-                 $this->logger->debug('No existing open ticket found via search (total=0 or issues array empty/invalid).');
-                 return null;
-             } else {
-                 // Ensure diagnostic echo for search failure is present
-                 // echo "[DIAGNOSTIC] JIRA Search Failed - Status Code: {$statusCode}" . PHP_EOL; // REMOVE
-                 // echo "[DIAGNOSTIC] JIRA Search Failed - Response Body: {$body}" . PHP_EOL; // REMOVE
-                 // echo "[DIAGNOSTIC] JIRA Search Failed - JQL Used: {$jql}" . PHP_EOL; // REMOVE
-                 $this->logger->warning('JIRA API search for duplicates failed.', ['status' => $statusCode, 'response' => $body, 'jql' => $jql]);
-                 return null; // Proceed with creation if search fails?
-             }
-         } catch (RequestException | \Exception $e) {
-              // Ensure diagnostic echo for search exception is present
-              // echo "[DIAGNOSTIC] JIRA Search Exception: " . $e->getMessage() . PHP_EOL; // REMOVE
-              // echo "[DIAGNOSTIC] JIRA Search Exception - JQL Used: {$jql}" . PHP_EOL; // REMOVE
-              $this->logger->error('Exception during JIRA ticket search for duplicates.', ['message' => $e->getMessage(), 'jql' => $jql]);
-              return null; // Proceed with creation on error?
-         }
-     }
+                // Check if total > 0 and issues exist
+                if (isset($responseData['total']) && $responseData['total'] > 0 && isset($responseData['issues']) && is_array($responseData['issues'])) {
+                    // Iterate through returned issues and check for EXACT summary match
+                    foreach ($responseData['issues'] as $issue) {
+                        if (isset($issue['fields']['summary']) && $issue['fields']['summary'] === $summary) {
+                            $foundKey = $issue['key'];
+                            $this->logger->debug('Found existing open JIRA ticket via search with exact summary match.', ['key' => $foundKey]);
+                            return $foundKey;
+                        }
+                    }
+                    // If loop completes without finding an exact match
+                    $this->logger->debug('Search returned issues, but none had an exact summary match.', ['expected_summary' => $summary]);
+                    return null;
+                }
+                // If total is 0 or issues array is missing/invalid
+                // Restore original log message
+                $this->logger->debug('No existing open ticket found via search (total=0 or issues array empty/invalid).');
+                return null;
+            } else {
+                // Ensure diagnostic echo for search failure is present
+                // echo "[DIAGNOSTIC] JIRA Search Failed - Status Code: {$statusCode}" . PHP_EOL; // REMOVE
+                // echo "[DIAGNOSTIC] JIRA Search Failed - Response Body: {$body}" . PHP_EOL; // REMOVE
+                // echo "[DIAGNOSTIC] JIRA Search Failed - JQL Used: {$jql}" . PHP_EOL; // REMOVE
+                $this->logger->warning('JIRA API search for duplicates failed.', ['status' => $statusCode, 'response' => $body, 'jql' => $jql]);
+                return null; // Proceed with creation if search fails?
+            }
+        } catch (RequestException | \Exception $e) {
+             // Ensure diagnostic echo for search exception is present
+             // echo "[DIAGNOSTIC] JIRA Search Exception: " . $e->getMessage() . PHP_EOL; // REMOVE
+             // echo "[DIAGNOSTIC] JIRA Search Exception - JQL Used: {$jql}" . PHP_EOL; // REMOVE
+             $this->logger->error('Exception during JIRA ticket search for duplicates.', ['message' => $e->getMessage(), 'jql' => $jql]);
+             return null; // Proceed with creation on error?
+        }
+    }
 
      // Method to determine SemVer level difference
     private function getSemVerLevel(string $currentVersion, string $latestVersion): string
@@ -389,6 +390,6 @@ class JiraService
             return 'MINOR';
         }
         // version_compare already confirmed latest > current, and major/minor are same, so it must be patch or pre-release difference handled by normalize
-        return 'PATCH'; 
+        return 'PATCH';
     }
-} 
+}

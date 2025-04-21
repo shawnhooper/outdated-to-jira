@@ -17,7 +17,7 @@ class CommandExecutor
     public function __construct(?LoggerInterface $logger = null, ?callable $processFactory = null)
     {
         $this->logger = $logger ?? new NullLogger();
-        $this->processFactory = $processFactory ?? function(array $command, string $cwd) {
+        $this->processFactory = $processFactory ?? function (array $command, string $cwd) {
             return new Process($command, $cwd, null, null, 300.0);
         };
     }
@@ -63,4 +63,4 @@ class CommandExecutor
             throw new \RuntimeException(sprintf('Failed to execute command "%s": %s', $commandString, $e->getMessage()), 0, $e);
         }
     }
-} 
+}

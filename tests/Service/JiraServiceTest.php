@@ -53,7 +53,7 @@ class JiraServiceTest extends TestCase
         return new JiraService($config, $this->logger, $this->mockHttpClient);
     }
 
-    // --- findExistingTicket Tests --- 
+    // --- findExistingTicket Tests ---
 
     public function testFindExistingTicketSuccess(): void
     {
@@ -119,7 +119,7 @@ class JiraServiceTest extends TestCase
         $this->assertNull($result);
     }
 
-     public function testFindExistingTicketApiError(): void
+    public function testFindExistingTicketApiError(): void
     {
         $service = $this->createService();
         $dependency = new Dependency('test/package', '1.0.0', '1.1.0', 'composer');
@@ -145,8 +145,8 @@ class JiraServiceTest extends TestCase
 
         $this->assertNull($result);
     }
-    
-    // --- createTicket Tests --- 
+
+    // --- createTicket Tests ---
 
     public function testCreateTicketSkipsWhenExistingFound(): void
     {
@@ -156,7 +156,7 @@ class JiraServiceTest extends TestCase
 
         // Mock findExistingTicket response (simulate search finding an exact match)
         $mockSearchResponse = json_encode([
-            'total' => 1, 
+            'total' => 1,
             'issues' => [['key' => $existingKey, 'fields' => ['summary' => 'Update Composer package test/package from 1.0.0 to 1.1.0']]]
         ]);
         $this->mockHandler->append(new Response(200, [], $mockSearchResponse));
@@ -192,9 +192,9 @@ class JiraServiceTest extends TestCase
 
         // Mock findExistingTicket response (simulate search finding an exact match)
          $mockSearchResponse = json_encode([
-            'total' => 1, 
+            'total' => 1,
             'issues' => [['key' => $existingKey, 'fields' => ['summary' => 'Update Composer package test/package from 1.0.0 to 1.1.0']]]
-        ]);
+         ]);
         $this->mockHandler->append(new Response(200, [], $mockSearchResponse));
 
         // No POST should occur in dry run
@@ -208,7 +208,7 @@ class JiraServiceTest extends TestCase
         $service = $this->createService();
         $dependency = new Dependency('test/package', '1.0.0', '2.1.0', 'composer'); // MAJOR update
         $newKey = 'TEST-557';
-        
+
         // Expected summary (simple format)
         $expectedSummary = sprintf(
             'Update %s package %s from %s to %s',
@@ -218,7 +218,7 @@ class JiraServiceTest extends TestCase
             $dependency->latestVersion
         );
         // Define expected priority for MAJOR update (CHANGED)
-        $expectedPriority = 'Emergency'; 
+        $expectedPriority = 'Emergency';
 
         // Mock findExistingTicket finding nothing
         $mockSearchResponse = json_encode(['total' => 0, 'issues' => []]);
@@ -226,9 +226,9 @@ class JiraServiceTest extends TestCase
 
         // Mock successful POST response
         $mockCreateResponse = json_encode(['key' => $newKey, 'id' => '12345', 'self' => '...']);
-        
+
         // Use callable to assert the request payload includes priority
-        $this->mockHandler->append(function (Request $request, array $options) use ($mockCreateResponse, $expectedSummary, $expectedPriority) { 
+        $this->mockHandler->append(function (Request $request, array $options) use ($mockCreateResponse, $expectedSummary, $expectedPriority) {
             $body = $request->getBody()->getContents();
             $payload = json_decode($body, true);
 
@@ -263,7 +263,7 @@ class JiraServiceTest extends TestCase
         $this->assertNull($result);
     }
 
-     public function testCreateTicketRequestException(): void
+    public function testCreateTicketRequestException(): void
     {
         $service = $this->createService(); // Not dry run
         $dependency = new Dependency('test/package', '1.0.0', '1.1.0', 'composer');
@@ -280,7 +280,7 @@ class JiraServiceTest extends TestCase
         $this->assertNull($result);
     }
 
-    // --- createTicketsForDependencies Tests --- 
+    // --- createTicketsForDependencies Tests ---
 
     /*
     public function testPlaceholder(): void
@@ -288,4 +288,4 @@ class JiraServiceTest extends TestCase
         $this->assertTrue(true);
     }
     */
-} 
+}
