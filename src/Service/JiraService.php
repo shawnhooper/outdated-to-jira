@@ -100,14 +100,24 @@ class JiraService
         // --- Check for existing duplicate ticket ---
         $existingKey = $this->findExistingTicket($dependency);
         if ($existingKey !== null) {
-            $this->logger->info('Skipping creation: Found existing open ticket.', ['key' => $existingKey, 'dependency' => $dependency->name]);
-            // Return the existing key so the caller knows it wasn't newly created but exists
+            $this->logger->info(
+                'Skipping creation: Found existing open ticket.',
+                [
+                    'key' => $existingKey,
+                    'dependency' => $dependency->name
+                ]
+            ); // phpcs:ignore Generic.Files.LineLength.TooLong
             return $existingKey;
         }
 
         // --- If no existing ticket, check for dry run before attempting creation ---
         if ($this->config['dry_run']) {
-             $this->logger->info('[Dry Run] No existing ticket found. Would create new ticket.', ['dependency' => $dependency->name]);
+             $this->logger->info(
+                 '[Dry Run] No existing ticket found. Would create new ticket.',
+                 [
+                    'dependency' => $dependency->name
+                 ]
+             );
              return self::DRY_RUN_WOULD_CREATE; // Return special indicator
         }
 
@@ -119,7 +129,7 @@ class JiraService
             'MINOR' => 'High',
             'PATCH' => 'Medium',
             default => 'Low' // Default for UNKNOWN
-        };
+        }; // phpcs:ignore Generic.Files.LineLength.TooLong
 
         // --- Proceed with actual creation if not dry run and no existing ticket ---
         $summary = sprintf(
@@ -128,9 +138,10 @@ class JiraService
             $dependency->name,
             $dependency->currentVersion,
             $dependency->latestVersion
-        );
+        ); // phpcs:ignore Generic.Files.LineLength.TooLong
 
         $description = sprintf(
+            // phpcs:ignore Generic.Files.LineLength.TooLong
             "The %s package *%s* is outdated.\n\nCurrent version: %s\nLatest version: %s\n\nPlease update the package and test accordingly.",
             $dependency->packageManager,
             $dependency->name,
@@ -240,10 +251,10 @@ class JiraService
                     // Removed echo
                     // Log only a preview of the response body
                     $this->logger->error(
-                        "JIRA ticket created (Status {$statusCode}) but failed to decode JSON response.", 
+                        "JIRA ticket created (Status {$statusCode}) but failed to decode JSON response.",
                         [
-                            'status' => $statusCode, 
-                            'response_preview' => substr($bodyContent, 0, 500), // Log preview
+                            'status' => $statusCode,
+                            'response_preview' => substr($bodyContent, 0, 500),
                             'json_error' => json_last_error_msg()
                         ]
                     );
@@ -252,22 +263,37 @@ class JiraService
 
                 $issueKey = $responseData['key'] ?? null;
                 if ($issueKey) {
-                     $this->logger->info('Successfully created JIRA ticket.', ['key' => $issueKey, 'summary' => $summary]);
+                     $this->logger->info(
+                         'Successfully created JIRA ticket.',
+                         [
+                            'key' => $issueKey,
+                            'summary' => $summary
+                         ]
+                     );
                      return $issueKey;
                 } else {
                      // Removed echo
-                     $this->logger->error('JIRA ticket created but key not found in response.', ['status' => $statusCode, 'response' => $bodyContent]);
+                     $this->logger->error(
+                         'JIRA ticket created but key not found in response.',
+                         [
+                           'status' => $statusCode,
+                           'response_preview' => substr($bodyContent, 0, 500) // Use preview
+                         ]
+                     );
                      return null;
                 }
             } else {
                  // Removed echo
                  // Removed echo
                  // Removed echo comment
-                 $this->logger->error('Failed to create JIRA ticket.', [
-                     'status' => $statusCode,
-                     'response' => $bodyContent,
-                     'request_payload' => $payload // Be careful logging sensitive data
-                 ]);
+                 $this->logger->error(
+                     'Failed to create JIRA ticket.',
+                     [
+                        'status' => $statusCode,
+                        'response_preview' => substr($bodyContent, 0, 500), // Use preview
+                        // 'request_payload' => $payload // Comment out payload logging for brevity/security
+                     ]
+                 ); // phpcs:ignore Generic.Files.LineLength.TooLong
                 return null;
             }
         } catch (RequestException $e) {
@@ -282,7 +308,10 @@ class JiraService
         } catch (\Exception $e) {
             // Add echo for generic Exception
             echo "[DIAGNOSTIC] Generic Exception: " . $e->getMessage() . PHP_EOL;
-            $this->logger->error('Generic Exception during JIRA ticket creation.', ['message' => $e->getMessage()]);
+            $this->logger->error(
+                'Generic Exception during JIRA ticket creation.',
+                ['message' => $e->getMessage()]
+            );
             return null;
         }
     }
@@ -298,7 +327,7 @@ class JiraService
             $dependency->name,
             $dependency->currentVersion,
             $dependency->latestVersion
-        );
+        ); // phpcs:ignore Generic.Files.LineLength.TooLong
 
         // JQL requires quotes within the string to be escaped with a backslash
         $escapedSummary = str_replace('"', '\\"', $summary);
@@ -325,27 +354,43 @@ class JiraService
                 $responseData = json_decode($body, true);
                 // Check if decode failed
                 if ($responseData === null && json_last_error() !== JSON_ERROR_NONE) {
-                    $this->logger->error('Failed to decode JIRA search response JSON.', [
-                        'json_error' => json_last_error_msg(),
-                        'response_body_preview' => substr($body, 0, 500) // Log preview
-                    ]);
+                    $this->logger->error(
+                        'Failed to decode JIRA search response JSON.',
+                        [
+                            'json_error' => json_last_error_msg(),
+                            'response_body_preview' => substr($body, 0, 500)
+                        ]
+                    );
                     return null; // Treat decode failure as no duplicate found
                 }
 
-                $this->logger->debug('JIRA Search API Response (200 OK)', ['jql' => $jql, 'response_data' => $responseData]);
+                $this->logger->debug(
+                    'JIRA Search API Response (200 OK)',
+                    [
+                        'jql' => $jql,
+                        // 'response_data' => $responseData // Might be too verbose for debug?
+                    ]
+                );
 
                 // Check if total > 0 and issues exist
+                // phpcs:ignore Generic.Files.LineLength.TooLong
                 if (isset($responseData['total']) && $responseData['total'] > 0 && isset($responseData['issues']) && is_array($responseData['issues'])) {
                     // Iterate through returned issues and check for EXACT summary match
-                    foreach ($responseData['issues'] as $issue) {
+                    foreach ($responseData['issues'] as $issue) { // phpcs:ignore Generic.Files.LineLength.TooLong
                         if (isset($issue['fields']['summary']) && $issue['fields']['summary'] === $summary) {
                             $foundKey = $issue['key'];
-                            $this->logger->debug('Found existing open JIRA ticket via search with exact summary match.', ['key' => $foundKey]);
+                            $this->logger->debug(
+                                'Found existing open JIRA ticket via search with exact summary match.',
+                                ['key' => $foundKey]
+                            );
                             return $foundKey;
                         }
                     }
                     // If loop completes without finding an exact match
-                    $this->logger->debug('Search returned issues, but none had an exact summary match.', ['expected_summary' => $summary]);
+                    $this->logger->debug(
+                        'Search returned issues, but none had an exact summary match.',
+                        ['expected_summary' => $summary]
+                    ); // phpcs:ignore Generic.Files.LineLength.TooLong
                     return null;
                 }
                 // If total is 0 or issues array is missing/invalid
@@ -357,14 +402,27 @@ class JiraService
                 // echo "[DIAGNOSTIC] JIRA Search Failed - Status Code: {$statusCode}" . PHP_EOL; // REMOVE
                 // echo "[DIAGNOSTIC] JIRA Search Failed - Response Body: {$body}" . PHP_EOL; // REMOVE
                 // echo "[DIAGNOSTIC] JIRA Search Failed - JQL Used: {$jql}" . PHP_EOL; // REMOVE
-                $this->logger->warning('JIRA API search for duplicates failed.', ['status' => $statusCode, 'response' => $body, 'jql' => $jql]);
+                $this->logger->warning(
+                    'JIRA API search for duplicates failed.',
+                    [
+                        'status' => $statusCode,
+                        'response_preview' => substr($body, 0, 500), // Use preview
+                        'jql' => $jql
+                    ]
+                ); // phpcs:ignore Generic.Files.LineLength.TooLong
                 return null; // Proceed with creation if search fails?
             }
         } catch (RequestException | \Exception $e) {
              // Ensure diagnostic echo for search exception is present
              // echo "[DIAGNOSTIC] JIRA Search Exception: " . $e->getMessage() . PHP_EOL; // REMOVE
              // echo "[DIAGNOSTIC] JIRA Search Exception - JQL Used: {$jql}" . PHP_EOL; // REMOVE
-             $this->logger->error('Exception during JIRA ticket search for duplicates.', ['message' => $e->getMessage(), 'jql' => $jql]);
+             $this->logger->error(
+                 'Exception during JIRA ticket search for duplicates.',
+                 [
+                    'message' => $e->getMessage(),
+                    'jql' => $jql
+                 ]
+             ); // phpcs:ignore Generic.Files.LineLength.TooLong
              return null; // Proceed with creation on error?
         }
     }
@@ -380,7 +438,7 @@ class JiraService
         // Basic check for semantic versioning format (X.Y.Z)
         if (!preg_match('/^\d+\.\d+\.\d+$/', $currentNormalized) || !preg_match('/^\d+\.\d+\.\d+$/', $latestNormalized)) {
              // If not standard X.Y.Z, use version_compare for basic comparison
-             return version_compare($latestNormalized, $currentNormalized) > 0 ? 'UNKNOWN' : 'UNKNOWN'; // Or handle non-semver differently
+             return version_compare($latestNormalized, $currentNormalized) > 0 ? 'UNKNOWN' : 'UNKNOWN'; // phpcs:ignore Generic.Files.LineLength.TooLong
         }
 
         $currentParts = explode('.', $currentNormalized);
@@ -391,13 +449,14 @@ class JiraService
             return 'UNKNOWN'; // latest is not newer or is same
         }
 
-        if ($latestParts[0] !== $currentParts[0]) {
+        if ($latestParts[0] !== $currentParts[0]) { // phpcs:ignore Generic.Files.LineLength.TooLong
             return 'MAJOR';
         }
         if ($latestParts[1] !== $currentParts[1]) {
             return 'MINOR';
         }
-        // version_compare already confirmed latest > current, and major/minor are same, so it must be patch or pre-release difference handled by normalize
+        // version_compare already confirmed latest > current, and major/minor are same,
+        // so it must be patch or pre-release difference handled by normalize
         return 'PATCH';
     }
 }

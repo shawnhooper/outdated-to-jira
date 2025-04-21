@@ -56,7 +56,10 @@ class NpmOutputParser
                     );
                 }
             } else {
-                 $this->logger->warning('Skipping incomplete package entry in npm output.', ['package' => $packageName, 'data' => $packageData]);
+                 $this->logger->warning('Skipping incomplete package entry in npm output.', [
+                     'package' => $packageName,
+                     'data' => $packageData
+                 ]);
             }
         }
 

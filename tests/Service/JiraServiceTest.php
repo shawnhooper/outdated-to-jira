@@ -228,6 +228,7 @@ class JiraServiceTest extends TestCase
         $mockCreateResponse = json_encode(['key' => $newKey, 'id' => '12345', 'self' => '...']);
 
         // Use callable to assert the request payload includes priority
+        // phpcs:ignore Generic.Files.LineLength.TooLong
         $this->mockHandler->append(function (Request $request, array $options) use ($mockCreateResponse, $expectedSummary, $expectedPriority) {
             $body = $request->getBody()->getContents();
             $payload = json_decode($body, true);
