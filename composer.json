@@ -3,7 +3,7 @@
     "description": "Creates JIRA tickets for outdated Composer and npm dependencies.",
     "type": "project",
     "require": {
-        "php": "^8.0",
+        "php": "^8.2",
         "guzzlehttp/guzzle": "^7.0",
         "symfony/console": "^6.0|^7.0",
         "vlucas/phpdotenv": "^5.4",
