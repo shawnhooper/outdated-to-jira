@@ -33,29 +33,28 @@ class ComposerOutputParser
             return [];
         }
 
-        if (!isset($data['locked']) || !is_array($data['locked'])) {
-             $this->logger->warning('Composer output does not contain a "locked" array.');
+        // Check for the 'installed' array (based on actual command output)
+        if (!isset($data['installed']) || !is_array($data['installed'])) {
+             $this->logger->warning('Composer output does not contain an "installed" array.');
              return [];
         }
 
-        foreach ($data['locked'] as $package) {
-            // --- TEMP DEBUG ---
-            // var_dump("Processing package:", $package);
-            // $isMissingFields = !isset($package['name'], $package['version'], $package['latest']);
-            // var_dump("Is Missing Fields:", $isMissingFields);
-            // --- END TEMP DEBUG ---
-
-            if (!isset($package['name'], $package['version'], $package['latest'])) {
-                 $this->logger->warning('Skipping incomplete package entry in Composer "locked" output.', ['package' => $package]);
-                 continue;
-            }
-            
-            $dependencies[] = new Dependency(
-                $package['name'],
-                $package['version'],
-                $package['latest'],
-                'composer'
-            );
+        // Iterate over 'installed' and check 'latest-status'
+        foreach ($data['installed'] as $package) {
+            // Check if latest-status indicates an update is possible
+            if (isset($package['latest-status']) && $package['latest-status'] === 'update-possible') {
+                // Ensure essential fields are present for outdated packages
+                if (!isset($package['name'], $package['version'], $package['latest'])) {
+                     $this->logger->warning('Skipping incomplete package entry in Composer "installed" output.', ['package' => $package]);
+                     continue;
+                 }
+                $dependencies[] = new Dependency(
+                    $package['name'],
+                    $package['version'],
+                    $package['latest'],
+                    'composer'
+                );
+             }
         }
 
         return $dependencies;

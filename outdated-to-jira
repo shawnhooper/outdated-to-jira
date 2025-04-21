@@ -289,12 +289,23 @@ $requiredEnv = [
         // --- Create JIRA Tickets ---
         if (!empty($outdatedDependencies)) {
             echo "[RUN] Processing JIRA ticket creation..." . PHP_EOL;
-             // $logger->debug('Reached point just before logging ticket creation attempt.'); // Keep commented
-            $logger->info(sprintf('Attempting to create JIRA tickets for %d dependencies...', count($outdatedDependencies)));
-             // $logger->debug('Reached point just after logging ticket creation attempt.'); // Keep commented
-            $ticketResults = $jiraService->createTicketsForDependencies($outdatedDependencies);
+            // $logger->info(sprintf('Attempting to create JIRA tickets for %d dependencies...', count($outdatedDependencies))); // Logged per item now
 
-            // --- Prepare Data for Table --- 
+            // --- Loop through dependencies and create tickets individually --- 
+            $ticketResults = []; // Initialize results array
+            foreach ($outdatedDependencies as $dependency) {
+                // Log progress before calling the service
+                $logger->info(sprintf('Processing dependency: %s', $dependency->name)); 
+                // Call createTicket for the single dependency
+                $resultKey = $jiraService->createTicket($dependency);
+                // Store the result (key, DRY_RUN_WOULD_CREATE, or null)
+                $ticketResults[$dependency->name] = $resultKey;
+                // Optional delay if needed
+                // usleep(200000); // 0.2 seconds
+            }
+            // --- End individual ticket creation loop ---
+
+            // --- Prepare Data for Table (using $ticketResults) --- 
             $tableData = [];
             $jiraBaseUrl = isset($config['jira_url']) ? rtrim($config['jira_url'], '/') : null;
 

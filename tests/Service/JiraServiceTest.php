@@ -255,7 +255,6 @@ class JiraServiceTest extends TestCase
     }
 
     // --- createTicketsForDependencies Tests --- 
-    // TODO: Add tests for the plural method if needed, potentially mocking createTicket itself
 
     /*
     public function testPlaceholder(): void

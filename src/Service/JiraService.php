@@ -74,6 +74,8 @@ class JiraService
      * @param Dependency[] $dependencies
      * @return array<string, string|null> Map of dependency name to created JIRA issue key or null if failed/skipped.
      */
+    // REMOVE THIS ENTIRE METHOD - START
+    /*
     public function createTicketsForDependencies(array $dependencies): array
     {
         $results = [];
@@ -86,6 +88,8 @@ class JiraService
         }
         return $results;
     }
+    */
+    // REMOVE THIS ENTIRE METHOD - END
 
 
     /**
