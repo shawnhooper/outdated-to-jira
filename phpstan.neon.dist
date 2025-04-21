@@ -3,7 +3,6 @@ parameters:
     paths:
         - src
         - tests
-        - outdated-to-jira # Include the main script
 
     # Optional: Exclude files or directories if needed
     # excludePaths:
