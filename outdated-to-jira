@@ -1,0 +1,428 @@
+#!/usr/bin/env php
+<?php
+
+// outdated-to-jira
+
+require __DIR__ . '/vendor/autoload.php';
+
+use App\Service\CommandExecutor;
+use App\Service\ComposerOutputParser;
+use App\Service\JiraService;
+use App\Service\NpmOutputParser;
+use App\ValueObject\Dependency;
+use Dotenv\Dotenv;
+use Psr\Log\LoggerInterface;
+use Symfony\Component\Console\Application;
+use Symfony\Component\Console\Command\Command;
+use Symfony\Component\Console\Input\InputArgument;
+use Symfony\Component\Console\Input\InputInterface;
+use Symfony\Component\Console\Input\InputOption;
+use Symfony\Component\Console\Logger\ConsoleLogger;
+use Symfony\Component\Console\Output\OutputInterface;
+use Symfony\Component\Console\SingleCommandApplication;
+use Symfony\Component\Console\Helper\Table;
+use Symfony\Component\Process\Exception\ProcessFailedException;
+use Symfony\Component\Process\Process;
+
+// --- Environment Variable Loading ---
+// Moved inside setCode block
+
+// Base required variables for JIRA
+$requiredEnv = [
+    'JIRA_URL',
+    'JIRA_USER_EMAIL',
+    'JIRA_API_TOKEN',
+    'JIRA_PROJECT_KEY',
+    'JIRA_ISSUE_TYPE',
+];
+// Validation will happen in load_jira_configuration
+
+(new SingleCommandApplication())
+    ->setName('Outdated to JIRA Ticket Creator')
+    ->setVersion('1.0.0')
+    // --- Command Arguments & Options ---
+    ->addArgument('dependency-file', InputArgument::REQUIRED, 'Path to the composer.json or package.json file.')
+    ->addOption('dry-run', 'd', InputOption::VALUE_NONE, 'Simulate ticket creation without calling JIRA API.')
+    ->addOption('package', 'p', InputOption::VALUE_OPTIONAL | InputOption::VALUE_IS_ARRAY, 'Only process updates for the specified package(s).')
+
+    // --- Command Execution Logic ---
+    ->setCode(function (InputInterface $input, OutputInterface $output): int {
+        echo "[RUN] Starting script execution..." . PHP_EOL;
+
+        $logger = new ConsoleLogger($output);
+        $logger->info('Starting Outdated Dependency Check...');
+
+        $isDryRun = $input->getOption('dry-run');
+        $dependencyFilePath = $input->getArgument('dependency-file');
+        $packagesToFilter = $input->getOption('package');
+        $dependencyFileName = basename($dependencyFilePath);
+        $workingDirectory = dirname($dependencyFilePath);
+
+        // --- Load .env configuration ---
+        $workingEnvPath = $workingDirectory . '/.env';
+        $scriptEnvPath = __DIR__ . '/.env';
+        $loadedPaths = [];
+
+        if (file_exists($workingEnvPath)) {
+            $logger->debug('Loading environment variables from project directory', ['path' => $workingEnvPath]);
+            try {
+                Dotenv::createImmutable($workingDirectory)->safeLoad();
+                $loadedPaths[] = $workingEnvPath;
+            } catch (\Exception $e) {
+                $logger->warning('Failed to load .env from project directory', ['path' => $workingEnvPath, 'error' => $e->getMessage()]);
+            }
+        }
+
+        // Load from script directory if it exists and is different from the working dir .env path
+        if (file_exists($scriptEnvPath) && realpath($scriptEnvPath) !== realpath($workingEnvPath)) {
+            $logger->debug('Loading environment variables from script directory', ['path' => $scriptEnvPath]);
+             try {
+                 // Load, but variables from working dir .env (already in $_ENV) won't be overwritten
+                 Dotenv::createImmutable(__DIR__)->safeLoad();
+                 $loadedPaths[] = $scriptEnvPath;
+             } catch (\Exception $e) {
+                $logger->warning('Failed to load .env from script directory', ['path' => $scriptEnvPath, 'error' => $e->getMessage()]);
+             }
+        }
+
+        if (empty($loadedPaths)) {
+            $logger->debug('.env file not found in project or script directory, or failed to load.');
+        }
+
+        // --- Validate Input File ---
+        if (!file_exists($dependencyFilePath)) {
+            $logger->error("Dependency file not found: {$dependencyFilePath}");
+            return Command::FAILURE;
+        }
+        if (!is_file($dependencyFilePath)) {
+             $logger->error("Provided path is not a file: {$dependencyFilePath}");
+             return Command::FAILURE;
+        }
+        if (!is_readable($dependencyFilePath)) {
+             $logger->error("Dependency file is not readable: {$dependencyFilePath}");
+             return Command::FAILURE;
+        }
+
+        // --- Determine Package Manager ---
+        $packageManager = null;
+        $parser = null;
+        $command = [];
+
+        if ($dependencyFileName === 'composer.json') {
+            $packageManager = 'composer';
+            $parser = new ComposerOutputParser($logger);
+            $command = ['composer', 'outdated', '--format=json'];
+            $logger->info("Detected Composer project.");
+        } elseif ($dependencyFileName === 'package.json') {
+            $packageManager = 'npm';
+            $parser = new NpmOutputParser($logger);
+            // Note: npm outdated --json exits 1 if outdated packages exist. We handle this below.
+            $command = ['npm', 'outdated', '--json'];
+             $logger->info("Detected Node (npm) project.");
+        } else {
+            $logger->error("Unsupported dependency file name: {$dependencyFileName}. Only 'composer.json' or 'package.json' are supported.");
+            return Command::FAILURE;
+        }
+
+
+        if ($isDryRun) {
+            $logger->notice('Dry run mode enabled. No tickets will be created in JIRA.');
+        }
+
+        // --- Configuration Loading & Validation (JIRA only) ---
+        $config = load_jira_configuration($logger, $isDryRun);
+        if ($config === null) {
+            return Command::FAILURE; // Signal error
+        }
+        $config['dry_run'] = $isDryRun;
+
+        // --- Debug Logging for loaded config ---
+        $logger->debug('Config passed to JiraService:', [
+            'JIRA URL' => $config['jira_url'] ?? 'Not Set',
+            'JIRA User Email' => $config['jira_user_email'] ?? 'Not Set',
+            'JIRA Token Set' => !empty($config['jira_api_token']) ? 'Yes' : 'No',
+            'JIRA Project Key' => $config['jira_project_key'] ?? 'Not Set',
+            'JIRA Issue Type' => $config['jira_issue_type'] ?? 'Not Set',
+            'Dry Run' => $config['dry_run'] ? 'Yes' : 'No',
+        ]);
+        // --- END Debug Logging ---
+
+        // --- Initialize Services ---
+        $commandExecutor = new CommandExecutor($logger);
+        // Parsers are instantiated above based on file type
+        $jiraService = new JiraService($config, $logger);
+
+        $outdatedDependencies = [];
+
+        // --- Execute Outdated Command and Parse ---
+        $commandString = implode(' ', $command);
+        $logger->info("Checking for outdated dependencies in: {$workingDirectory}");
+
+        // --- Cache Implementation ---
+        $cacheDir = sys_get_temp_dir() . '/outdated-to-jira-cache';
+        if (!is_dir($cacheDir) && !mkdir($cacheDir, 0755, true)) {
+            $logger->warning("Could not create cache directory: {$cacheDir}. Proceeding without cache.");
+            $cacheKey = null;
+            $cacheFilePath = null;
+        } else {
+            // Use MD5 hash of the absolute path for a unique, filesystem-safe key
+            $absoluteDependencyPath = realpath($dependencyFilePath);
+            if (!$absoluteDependencyPath) {
+                 $logger->warning("Could not resolve absolute path for: {$dependencyFilePath}. Caching might be unreliable.");
+                 $cacheKey = md5($dependencyFilePath); // Fallback to relative path hash
+            } else {
+                 $cacheKey = md5($absoluteDependencyPath);
+            }
+            $cacheFilePath = $cacheDir . '/' . $cacheKey . '.json';
+        }
+
+        $cacheDuration = 900; // 15 minutes in seconds
+        $useCache = false;
+        $packageManagerOutput = null;
+
+        if ($cacheFilePath && file_exists($cacheFilePath)) {
+            $cacheAge = time() - filemtime($cacheFilePath);
+            if ($cacheAge < $cacheDuration) {
+                $logger->notice("Using cached dependency data from {$cacheFilePath} (age: {$cacheAge}s).");
+                $packageManagerOutput = file_get_contents($cacheFilePath);
+                if ($packageManagerOutput === false) {
+                    $logger->warning("Failed to read cache file: {$cacheFilePath}. Running command again.");
+                    $useCache = false;
+                } else {
+                    $useCache = true;
+                }
+            } else {
+                 $logger->debug("Cache file exists but is too old (age: {$cacheAge}s). Running command again.");
+                 // Optionally: Delete the old cache file
+                 // unlink($cacheFilePath); 
+            }
+        }
+        // --- End Cache Implementation ---
+
+        if (!$useCache) {
+            echo "[RUN] Executing dependency check: {$commandString} in {$workingDirectory}" . PHP_EOL; // Moved echo here
+            try {
+                if ($packageManager === 'composer') {
+                    $packageManagerOutput = $commandExecutor->execute($command, $workingDirectory);
+                } elseif ($packageManager === 'npm') {
+                    $npmProcess = new Process($command, $workingDirectory, null, null, 300.0);
+                    $npmProcess->run();
+                    $output = $npmProcess->getOutput();
+                    $errorOutput = $npmProcess->getErrorOutput();
+
+                    if (!empty($errorOutput) && $npmProcess->getExitCode() !== 0 && strpos($errorOutput, 'code E404') !== false) {
+                        $logger->error('npm command failed possibly due to registry issue: ' . $errorOutput);
+                        $packageManagerOutput = null; // Indicate failure
+                    } elseif (empty($output) && $npmProcess->getExitCode() !== 0 && !empty($errorOutput)) {
+                        $logger->error('npm "outdated" command failed: ' . $errorOutput);
+                         $packageManagerOutput = null; // Indicate failure
+                    } elseif (empty(trim($output)) && $npmProcess->getExitCode() === 0) {
+                        $logger->info('No npm output and exit code 0, likely no outdated dependencies.');
+                         $packageManagerOutput = '{}'; // Empty JSON object for no outdated deps
+                    } else {
+                        // npm outdated with --json often returns exit code 1 *with* valid json output
+                        $packageManagerOutput = $output;
+                    }
+                }
+
+                // Cache the successful output
+                if ($packageManagerOutput !== null && $cacheFilePath) {
+                    if (file_put_contents($cacheFilePath, $packageManagerOutput) === false) {
+                        $logger->warning("Failed to write output to cache file: {$cacheFilePath}");
+                    } else {
+                        $logger->debug("Cached output to {$cacheFilePath}");
+                    }
+                } elseif ($packageManagerOutput === null) {
+                     // Command failed, don't proceed with parsing
+                     $logger->error("Command execution failed, cannot parse output.");
+                     return Command::FAILURE;
+                }
+
+            } catch (ProcessFailedException | \RuntimeException | \Exception $e) {
+                $logger->error(sprintf('Error during %s processing: %s', $packageManager, $e->getMessage()));
+                return Command::FAILURE;
+            }
+        }
+
+        // --- Parse Output (from cache or command execution) ---
+        if ($packageManagerOutput === null) {
+             // This should ideally not happen if we return FAILURE above, but as a safeguard
+             $logger->error("No package manager output available to parse.");
+             return Command::FAILURE;
+        }
+
+        try {
+            $outdatedDependencies = $parser->parse($packageManagerOutput);
+            $logger->info(sprintf('Found %d outdated %s dependencies from %s.', count($outdatedDependencies), $packageManager, $useCache ? 'cache' : 'command execution'));
+        } catch (\JsonException | \InvalidArgumentException $e) {
+             $logger->error(sprintf('Error parsing %s output (%s): %s', $packageManager, $useCache ? 'from cache' : 'from command', $e->getMessage()), [
+                 'output_source' => $useCache ? $cacheFilePath : 'live command',
+                 'output_preview' => substr($packageManagerOutput, 0, 200) // Log a preview
+             ]);
+             // If cache caused the error, maybe delete it?
+             if ($useCache && $cacheFilePath) {
+                  $logger->warning("Deleting potentially corrupt cache file: {$cacheFilePath}");
+                  unlink($cacheFilePath);
+             }
+             return Command::FAILURE;
+        }
+
+        // --- Filter Dependencies (if requested) ---
+        if (!empty($packagesToFilter)) {
+            $logger->info('Filtering dependencies based on provided package names.', ['packages' => $packagesToFilter]);
+            $originalCount = count($outdatedDependencies);
+            $outdatedDependencies = array_filter(
+                $outdatedDependencies,
+                fn(Dependency $dep) => in_array($dep->name, $packagesToFilter, true)
+            );
+            $filteredCount = count($outdatedDependencies);
+            $logger->info("Filtered dependencies: {$filteredCount} remaining out of {$originalCount}.");
+
+            if ($filteredCount === 0) {
+                 $logger->warning('No specified packages were found in the outdated list.');
+                 // Exit early if no specified packages are outdated
+                 $logger->info('Processing finished.');
+                 return Command::SUCCESS;
+            }
+        }
+
+        // --- Create JIRA Tickets ---
+        if (!empty($outdatedDependencies)) {
+            echo "[RUN] Processing JIRA ticket creation..." . PHP_EOL;
+             // $logger->debug('Reached point just before logging ticket creation attempt.'); // Keep commented
+            $logger->info(sprintf('Attempting to create JIRA tickets for %d dependencies...', count($outdatedDependencies)));
+             // $logger->debug('Reached point just after logging ticket creation attempt.'); // Keep commented
+            $ticketResults = $jiraService->createTicketsForDependencies($outdatedDependencies);
+
+            // --- Prepare Data for Table --- 
+            $tableData = [];
+            $jiraBaseUrl = isset($config['jira_url']) ? rtrim($config['jira_url'], '/') : null;
+
+            // Use the JiraService constant
+            $dryRunWouldCreateStatus = JiraService::DRY_RUN_WOULD_CREATE;
+
+            foreach ($outdatedDependencies as $dependency) {
+                $depName = $dependency->name;
+                $resultKey = $ticketResults[$depName] ?? null;
+                $status = '';
+                $url = 'N/A';
+
+                if ($resultKey === null) {
+                    $status = 'Failed';
+                } elseif ($resultKey === $dryRunWouldCreateStatus) {
+                    $status = 'To Be Created'; // New status for dry run
+                } else {
+                    // Assume it's an existing key
+                    $status = 'Exists (' . $resultKey . ')'; // Show key in status
+                    if ($jiraBaseUrl) {
+                        $url = $jiraBaseUrl . '/browse/' . $resultKey;
+                    }
+                }
+
+                $tableData[] = [
+                    $depName,
+                    $dependency->currentVersion,
+                    $dependency->latestVersion,
+                    $status,
+                    $url,
+                ];
+            }
+
+            // --- Display Table --- 
+            $table = new Table($output);
+            $table->setHeaders(['Package Name', 'Current Version', 'Latest Version', 'Status', 'JIRA Ticket URL']);
+            $table->setRows($tableData);
+            $table->render();
+
+            // --- Remove Old Logging --- 
+            /* // OLD LOGGING BLOCK - REMOVED
+            $successCount = 0;
+            $failCount = 0;
+            $foundCount = 0;
+            foreach ($ticketResults as $depName => $result) {
+                if ($result === null) {
+                    // Failure case
+                    $logger->error(sprintf(' -> Failed to create ticket for %s', $depName));
+                    $failCount++;
+                } elseif (strpos($result, 'DRY-RUN-') === 0) {
+                    // Dry Run case
+                    $logger->info(sprintf(' -> [Dry Run] Simulated ticket for %s: %s', $depName, $result));
+                    $successCount++; // Count dry runs as success for summary
+                } else {
+                    // Check if the key indicates a new ticket or existing
+                    // We assume JiraService::createTicket returns a NEW key (e.g., PROJ-123)
+                    // and JiraService::findExistingTicket returns an EXISTING key (e.g., PROJ-100)
+                    // This distinction isn't perfect just based on the key format, but we'll log differently.
+                    // A more robust way would require JiraService to return an object or array indicating status.
+                    
+                    // Simple heuristic: log based on whether the API call happened within JiraService or not.
+                    // Since JiraService logs the creation/skip, we just format the final URL here.
+                    $logMessage = sprintf(' -> Processed %s: %s', $depName, $result);
+                    $logContext = [];
+                    if (isset($config['jira_url'])) { // Check URL exists
+                         $issueUrl = $config['jira_url'] . '/browse/' . $result;
+                         $logMessage .= " ({$issueUrl})";
+                         $logContext['jira_url'] = $issueUrl;
+                     }
+                    $logger->info($logMessage, $logContext);
+
+                    // We can't easily distinguish new vs found from just the key here.
+                    // Both contribute to the 'success' count for now.
+                    // The detailed log comes from JiraService.
+                    $successCount++; 
+                }
+            }
+            // Adjust summary logging if needed, or keep simple success/fail
+            $logger->info(sprintf('JIRA Ticket Processing Summary: %d processed (created/found/simulated), %d failed.', $successCount, $failCount));
+            */ // END OLD LOGGING BLOCK
+
+        } else {
+            $logger->info('No outdated dependencies found to create tickets for.');
+        }
+
+        echo "[RUN] Script finished." . PHP_EOL;
+        $logger->info('Processing finished.');
+        return Command::SUCCESS; // Indicate success
+    })
+    ->run();
+
+
+/**
+ * Loads and validates required JIRA configuration from environment variables.
+ *
+ * @return array<string, mixed>|null Configuration array or null on failure.
+ */
+function load_jira_configuration(LoggerInterface $logger, bool $isDryRun): ?array
+{
+    $config = [];
+    $errors = [];
+
+    // Use the previously defined $requiredEnv
+    global $requiredEnv; // Access the global definition
+
+    foreach ($requiredEnv as $var) {
+        $value = $_ENV[$var] ?? null; // Get value or null if not set
+        if (empty($value) && !$isDryRun) { // Only add error if not a dry run
+            $errors[] = "Environment variable {$var} is not set.";
+        }
+        // Always add to config, might be null/empty on dry run but that's ok
+        $config[strtolower(str_replace('JIRA_', 'jira_', $var))] = $value;
+    }
+
+    // Removed checks for COMPOSER_PROJECT_PATH and NPM_PROJECT_PATH
+
+    if (!empty($errors)) {
+        foreach ($errors as $error) {
+            $logger->error($error);
+        }
+        return null;
+    }
+
+    // Trim trailing slash from JIRA URL just in case
+    // Check if jira_url is set before trimming (could be null on dry run)
+    if (isset($config['jira_url'])) {
+        $config['jira_url'] = rtrim($config['jira_url'], '/');
+    }
+
+    return $config;
+} 
