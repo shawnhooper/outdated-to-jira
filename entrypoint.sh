@@ -13,7 +13,7 @@ echo "JIRA Project: ${JIRA_PROJECT_KEY}"
 echo "JIRA Issue Type: ${JIRA_ISSUE_TYPE}"
 
 # Construct the command
-CMD="php /app/outdated-to-jira"
+CMD="php /app/run-action.php"
 
 # Add dependency file argument (relative to GITHUB_WORKSPACE)
 # GitHub Actions automatically mounts the workspace at /github/workspace
@@ -35,7 +35,7 @@ if [ -n "${PACKAGES}" ]; then
   done
 fi
 
-# Execute the command
+# Execute the command using the new action runner script
 echo "Running command: ${CMD}"
 ${CMD}
 

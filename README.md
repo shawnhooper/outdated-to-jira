@@ -6,12 +6,13 @@ This application automates the process of tracking outdated Composer and npm dep
 
 ## Features
 
-*   **Composer Support:** Runs `composer outdated --format=json` in the project directory.
-*   **NPM Support:** Runs `npm outdated --json` in the project directory.
+*   **Composer & NPM Support:** Checks for outdated dependencies using `composer outdated` or `npm outdated`.
 *   **JIRA Integration:** Creates JIRA tickets in a specified project for each identified outdated dependency. Automatically sets ticket priority based on SemVer update level (MAJOR/MINOR/PATCH).
-*   **Configurable:** Allows configuration of JIRA connection details (URL, API token, project key, issue type).
-*   **Filtering:** Allows processing only specific packages specified via command-line options.
-*   **Duplicate Prevention:** (Optional - currently commented out in `JiraService.php`) Checks for existing JIRA tickets for the same dependency and version before creating a new one.
+*   **Configurable:** Accepts JIRA connection details (URL, API token, project key, issue type) via configuration array.
+*   **Filtering:** Allows processing only specific packages.
+*   **Duplicate Prevention:** Checks for existing JIRA tickets for the same dependency and version before creating a new one.
+*   **PSR-3 Logging:** Uses a PSR-3 compliant logger for output.
+*   **GitHub Action:** Provides a ready-to-use GitHub Action for automated checks in CI/CD pipelines.
 
 ## Requirements
 
@@ -21,51 +22,77 @@ This application automates the process of tracking outdated Composer and npm dep
 *   Access to a JIRA Cloud instance with API access.
 *   An API token for JIRA Cloud authentication.
 
-## Configuration
+## Installation (as a Library)
 
-**Note:** The following instructions using `.env` files apply when running the tool directly from the command line (CLI). For configuration when using the GitHub Action, please refer to the "Using as a GitHub Action" section.
-
-The application requires JIRA connection details defined as environment variables when run via CLI.
-
-It loads settings from `.env` files in a layered approach:
-
-1.  **Project Directory:** It first looks for and loads a `.env` file in the directory containing the `<path/to/composer.json|package.json>` file passed as an argument.
-2.  **Script Directory:** It then looks for and loads a `.env` file in the directory where the `outdated-to-jira` script itself resides (if this is a different location and the file exists).
-
-**Precedence:** If a variable (e.g., `JIRA_URL`) is defined in *both* `.env` files, the value from the **Project Directory**'s `.env` file will be used. The Script Directory's `.env` acts as a fallback for variables not defined in the project's file.
-
-Create a `.env` file (or copy `.env.example` to `.env`) and set the following variables:
-
-*   `JIRA_URL`: The base URL of your JIRA Cloud instance (e.g., `https://your-domain.atlassian.net`).
-*   `JIRA_USER_EMAIL`: The email address associated with the JIRA API token.
-*   `JIRA_API_TOKEN`: The JIRA Cloud API token.
-*   `JIRA_PROJECT_KEY`: The project key where tickets should be created (e.g., `PROJ`).
-*   `JIRA_ISSUE_TYPE`: The JIRA issue type for the tickets (e.g., `Task`, `Bug`).
-
-## Usage
-
-The application is run from the command line, providing the path to the dependency file:
+Add this package as a development dependency to your project using Composer:
 
 ```bash
-php outdated-to-jira <path/to/composer.json|package.json> [--dry-run] [--package=<name> ...]
+composer require --dev shawnhooper/outdated-to-jira
 ```
 
-*   `<path/to/composer.json|package.json>`: (Required) The full or relative path to the `composer.json` or `package.json` file you want to check.
-*   `--dry-run` | `-d`: (Optional) Output the tickets that would be created without actually creating them in JIRA.
-*   `--package=<name>` | `-p <name>`: (Optional, Repeatable) Only process updates for the specified package name(s). If omitted, all outdated direct dependencies are processed.
+## Library Usage
 
-**Examples:**
+Instantiate the `DependencyCheckerService` and call its `process` method.
 
-```bash
-# Check a composer project and simulate ticket creation
-php outdated-to-jira /var/www/my-php-project/composer.json --dry-run
+```php
+<?php
 
-# Check an npm project and only create tickets for 'react' and 'react-dom' if outdated
-php outdated-to-jira ./frontend-app/package.json --package=react --package=react-dom
+require 'vendor/autoload.php';
 
-# Check a composer project for a specific package using the shortcut
-php outdated-to-jira ../backend/composer.json -p psr/log
+use App\Service\DependencyCheckerService;
+use Monolog\Logger; // Or your preferred PSR-3 Logger
+use Monolog\Handler\StreamHandler;
+
+// 1. Configure JIRA details (load from .env, config files, etc.)
+$jiraConfig = [
+    'jira_url' => 'https://your-domain.atlassian.net',
+    'jira_user_email' => 'your-email@example.com',
+    'jira_api_token' => getenv('JIRA_API_TOKEN'), // Get token securely!
+    'jira_project_key' => 'YOUR_PROJECT_KEY',
+    'jira_issue_type' => 'Task',
+    'dry_run' => false, // Set to true to simulate
+];
+
+// 2. Create a PSR-3 Logger instance
+$logger = new Logger('MyApplication');
+$logger->pushHandler(new StreamHandler('php://stdout', Logger::INFO));
+
+// 3. Instantiate the service
+$checkerService = new DependencyCheckerService($jiraConfig, $logger);
+
+// 4. Define the path to your dependency file and optional filters
+$dependencyFilePath = __DIR__ . '/path/to/your/composer.json'; // Or package.json
+$packagesToFilter = ['some/package', 'another/vendor']; // Optional
+
+// 5. Process the dependencies
+try {
+    $results = $checkerService->process($dependencyFilePath, $packagesToFilter);
+
+    $logger->info("Processing Results:", $results);
+
+    // Example: Check status for a specific package
+    if (isset($results['some/package'])) {
+        $status = $results['some/package'][DependencyCheckerService::RESULT_STATUS_KEY];
+        $jiraKey = $results['some/package'][DependencyCheckerService::RESULT_JIRA_KEY];
+        $logger->info("Status for some/package: {$status}" . ($jiraKey ? " ({$jiraKey})" : ''));
+    }
+
+} catch (\InvalidArgumentException $e) {
+    $logger->error("Configuration or file path error: " . $e->getMessage());
+} catch (\RuntimeException $e) {
+    $logger->error("Processing error: " . $e->getMessage());
+} catch (\Exception $e) {
+    $logger->error("An unexpected error occurred: " . $e->getMessage());
+}
+
 ```
+
+### Return Values
+
+The `process` method returns an associative array where keys are dependency names. Each value is another array containing:
+
+*   `DependencyCheckerService::RESULT_STATUS_KEY`: A string indicating the outcome (e.g., `STATUS_TICKET_CREATED`, `STATUS_EXISTING_TICKET`, `STATUS_DRY_RUN_WOULD_CREATE`, `STATUS_FILTERED_OUT`, `STATUS_PROCESSING_ERROR`).
+*   `DependencyCheckerService::RESULT_JIRA_KEY`: The created or found JIRA issue key (string), or `null` if not applicable.
 
 ## Testing
 

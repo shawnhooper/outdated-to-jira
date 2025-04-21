@@ -23,14 +23,13 @@ COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 # Set working directory
 WORKDIR /app
 
-# Copy application files
+# Copy application files (including the new run-action.php)
 COPY . /app
 
 # Install composer dependencies (production mode)
-# Use --ignore-platform-reqs initially if lock file causes issues, then refine
-RUN composer install --no-dev --optimize-autoloader --ignore-platform-reqs
-# Alternatively, regenerate lock file inside docker build based on php 8.2?
-# RUN composer update --no-dev --optimize-autoloader
+# This will now include monolog based on the updated composer.json
+# Removed --ignore-platform-reqs as the lock file should be generated correctly now.
+RUN composer install --no-dev --optimize-autoloader
 
 # Make entrypoint script executable
 COPY entrypoint.sh /entrypoint.sh
