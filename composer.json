@@ -2,6 +2,7 @@
     "name": "shawnhooper/outdated-to-jira",
     "description": "Creates JIRA tickets for outdated Composer and npm dependencies.",
     "type": "library",
+    "license": "MIT",
     "require": {
         "php": "^8.2",
         "guzzlehttp/guzzle": "^7.0",
