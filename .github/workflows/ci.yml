@@ -41,5 +41,11 @@ jobs:
       - name: Install Dependencies
         run: composer install --prefer-dist --no-progress --no-suggest
 
+      - name: Run PHP Code Sniffer (PSR-12)
+        run: vendor/bin/phpcs --standard=PSR12 src tests outdated-to-jira
+
+      - name: Run PHPStan Static Analysis
+        run: vendor/bin/phpstan analyse --memory-limit=2G -c phpstan.neon.dist
+
       - name: Run Tests
         run: vendor/bin/phpunit 
