@@ -39,7 +39,7 @@ jobs:
             ${{ runner.os }}-php-${{ matrix.php-versions }}-composer-
 
       - name: Install Dependencies
-        run: composer install --prefer-dist --no-progress --no-suggest
+        run: composer install --prefer-dist --no-progress --no-suggest --ignore-platform-reqs
 
       - name: Run PHP Code Sniffer (PSR-12)
         run: vendor/bin/phpcs src tests outdated-to-jira
