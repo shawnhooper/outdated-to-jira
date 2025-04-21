@@ -1,0 +1,6 @@
+parameters:
+    level: 5 # Start with a reasonable level (0-9)
+    paths:
+        - src
+        - tests
+        - outdated-to-jira # Include the main script
