@@ -1,5 +1,7 @@
 # Outdated Dependency Jira Ticket Creator
 
+[![CI](https://github.com/shawnhooper/outdated-to-jira/actions/workflows/ci.yml/badge.svg)](https://github.com/shawnhooper/outdated-to-jira/actions/workflows/ci.yml)
+
 This application automates the process of tracking outdated Composer and npm dependencies by creating JIRA tickets for each outdated package.
 
 ## Features
