@@ -238,7 +238,15 @@ class JiraService
             if ($statusCode >= 200 && $statusCode < 300) {
                 if ($jsonLastError !== JSON_ERROR_NONE) {
                     // Removed echo
-                    $this->logger->error("JIRA ticket created (Status {$statusCode}) but failed to decode JSON response.", ['status' => $statusCode, 'response' => $bodyContent, 'json_error' => json_last_error_msg()]);
+                    // Log only a preview of the response body
+                    $this->logger->error(
+                        "JIRA ticket created (Status {$statusCode}) but failed to decode JSON response.", 
+                        [
+                            'status' => $statusCode, 
+                            'response_preview' => substr($bodyContent, 0, 500), // Log preview
+                            'json_error' => json_last_error_msg()
+                        ]
+                    );
                     return null;
                 }
 
