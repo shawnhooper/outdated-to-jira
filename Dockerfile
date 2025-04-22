@@ -4,10 +4,12 @@ FROM php:8.2-cli
 # Install system dependencies
 # git, zip/unzip for composer
 # nodejs, npm for npm support (optional, could assume runner has them)
+# libonig-dev for mbstring php extension
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     zip \
     unzip \
+    libonig-dev \
     # Install Node.js and npm (example using nodesource setup)
     && curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - \
     && apt-get install -y nodejs \
