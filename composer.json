@@ -9,7 +9,8 @@
         "symfony/console": "^6.0|^7.0",
         "psr/log": "^1.1 || ^2.0 || ^3.0",
         "symfony/process": "^6.0|^7.0",
-        "monolog/monolog": "^2.0 || ^3.0"
+        "monolog/monolog": "^2.0 || ^3.0",
+        "vlucas/phpdotenv": "^5.4"
     },
     "autoload": {
         "psr-4": {
