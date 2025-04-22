@@ -17,6 +17,9 @@
             "App\\": "src/"
         }
     },
+    "bin": [
+        "bin/outdated-to-jira"
+    ],
     "authors": [
         {
             "name": "Shawn Hooper",
