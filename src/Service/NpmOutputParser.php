@@ -45,22 +45,34 @@ class NpmOutputParser
 
         // The JSON structure is { "package-name": { "current": "1.0.0", "wanted": "1.0.1", "latest": "2.0.0", ... } }
         foreach ($data as $packageName => $packageData) {
-            if (isset($packageData['current'], $packageData['latest'])) {
-                // Only add if current and latest versions are different
-                if ($packageData['current'] !== $packageData['latest']) {
-                    $dependencies[] = new Dependency(
-                        $packageName,
-                        $packageData['current'],
-                        $packageData['latest'],
-                        'npm'
-                    );
-                }
-            } else {
-                 $this->logger->warning('Skipping incomplete package entry in npm output.', [
-                     'package' => $packageName,
-                     'data' => $packageData
-                 ]);
+            // Ensure the data is an array/object as expected
+            if (!is_array($packageData)) {
+                $this->logger->warning('Skipping non-array package entry in npm output.', ['package' => $packageName, 'data_type' => gettype($packageData)]);
+                continue;
             }
+
+            // Check for essential fields: wanted and latest are critical.
+            if (!isset($packageData['wanted'], $packageData['latest'])) {
+                 $this->logger->warning(
+                    'Skipping package entry missing essential fields (wanted/latest) in npm output.',
+                    ['package' => $packageName, 'data' => $packageData]
+                 );
+                 continue;
+            }
+
+            // Check for 'current'. If missing, silently skip (common case, not usually an error for outdated check).
+            if (!isset($packageData['current'])) {
+                 // $this->logger->debug('Skipping package entry missing 'current' version.', ['package' => $packageName]); // Optional: Log at debug level
+                 continue; // Silently skip
+            }
+
+            // If all required fields are present
+            $dependencies[] = new Dependency(
+                $packageName,
+                $packageData['current'],
+                $packageData['latest'], // Use 'latest' as the target version
+                'npm'
+            );
         }
 
         return $dependencies;
