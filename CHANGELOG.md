@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.2](https://github.com/shawnhooper/outdated-to-jira/compare/v1.1.1...v1.1.2) (2025-04-22)
+
+
+### Bug Fixes
+
+* **npm:** Silently skip entries missing "current" version in parser ([f5869d6](https://github.com/shawnhooper/outdated-to-jira/commit/f5869d6ae4d60188ad262416b59a7a867e358a35))
+* **npm:** Silently skip entries missing "current" version in parser ([743e03c](https://github.com/shawnhooper/outdated-to-jira/commit/743e03c9dafe99d522cc355700aef3829576e8b7))
+
 ## [1.1.1](https://github.com/shawnhooper/outdated-to-jira/compare/v1.1.0...v1.1.1) (2025-04-22)
 
 
