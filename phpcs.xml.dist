@@ -9,7 +9,6 @@
     <!-- Configure paths to check -->
     <file>src</file>
     <file>tests</file>
-    <file>outdated-to-jira</file>
 
     <!-- Exclude vendor directory -->
     <exclude-pattern>vendor/*</exclude-pattern>

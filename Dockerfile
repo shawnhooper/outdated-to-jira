@@ -4,14 +4,21 @@ FROM php:8.2-cli
 # Install system dependencies
 # git, zip/unzip for composer
 # nodejs, npm for npm support (optional, could assume runner has them)
+# libonig-dev for mbstring php extension
+# libcurl4-openssl-dev for curl php extension
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     zip \
     unzip \
+    libonig-dev \
+    libcurl4-openssl-dev \
     # Install Node.js and npm (example using nodesource setup)
     && curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - \
     && apt-get install -y nodejs \
-    && rm -rf /var/lib/apt/lists/*
+    # Clean up apt caches and downloaded package files
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* \
+    && rm -rf /var/cache/apt/archives/*
 
 # Install required PHP extensions (adjust based on actual needs)
 # json is usually built-in, mbstring, curl needed by Guzzle/Symfony
