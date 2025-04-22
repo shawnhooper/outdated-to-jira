@@ -143,9 +143,9 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Run Outdated Dependency Check (Composer)
-        uses: shawnhooper/outdated-to-jira@staging # Or use @main or a specific tag/commit
+        uses: shawnhooper/outdated-to-jira@v1
         with:
-          dependency-file: 'path/to/your/composer.json' # Adjust path if needed
+          dependency-file: 'composer.json' # Adjust path if needed
           # Optional inputs:
           # dry-run: 'true'
           # packages: 'php-package1 vendor/package2'
@@ -154,8 +154,8 @@ jobs:
           jira-url: ${{ secrets.JIRA_URL }}
           jira-user-email: ${{ secrets.JIRA_USER_EMAIL }}
           jira-api-token: ${{ secrets.JIRA_API_TOKEN }}
-          jira-project-key: ${{ secrets.JIRA_PROJECT_KEY }} # Or a specific key for PHP deps?
-          jira-issue-type: 'Task' # Or your desired issue type
+          jira-project-key: ${{ secrets.JIRA_PROJECT_KEY }}
+          jira-issue-type: 'Task'
 
   # Job to check NPM dependencies
   check_npm:
@@ -168,7 +168,7 @@ jobs:
       - name: Run Outdated Dependency Check (NPM)
         uses: shawnhooper/outdated-to-jira@staging # Or use @main or a specific tag/commit
         with:
-          dependency-file: 'path/to/your/package.json' # Adjust path if needed
+          dependency-file: 'package.json' # Adjust path if needed
           # Optional inputs:
           # dry-run: 'true'
           # packages: 'react lodash'
@@ -177,7 +177,7 @@ jobs:
           jira-url: ${{ secrets.JIRA_URL }}
           jira-user-email: ${{ secrets.JIRA_USER_EMAIL }}
           jira-api-token: ${{ secrets.JIRA_API_TOKEN }}
-          jira-project-key: ${{ secrets.JIRA_PROJECT_KEY }} # Or a specific key for JS deps?
+          jira-project-key: ${{ secrets.JIRA_PROJECT_KEY }}
           jira-issue-type: 'Task' # Or your desired issue type
 
 ```
