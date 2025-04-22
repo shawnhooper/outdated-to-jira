@@ -127,33 +127,59 @@ This tool can also be run as a GitHub Action within your own workflows.
 ```yaml
 name: Check Dependencies
 
-on: 
+on:
   schedule:
     # Runs daily at midnight UTC
-    - cron: '0 0 * * *' 
+    - cron: '0 0 * * *'
   workflow_dispatch: # Allow manual trigger
 
 jobs:
-  check_and_create_tickets:
+  # Job to check Composer dependencies
+  check_composer:
+    name: Check Composer Dependencies
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Run Outdated Dependency Check
+      - name: Run Outdated Dependency Check (Composer)
         uses: shawnhooper/outdated-to-jira@staging # Or use @main or a specific tag/commit
         with:
-          dependency-file: 'path/to/your/composer.json' # Or package.json
+          dependency-file: 'path/to/your/composer.json' # Adjust path if needed
           # Optional inputs:
-          # dry-run: 'true' 
-          # packages: 'package1 package2'
-          
+          # dry-run: 'true'
+          # packages: 'php-package1 vendor/package2'
+
           # Required JIRA configuration (use secrets!)
           jira-url: ${{ secrets.JIRA_URL }}
           jira-user-email: ${{ secrets.JIRA_USER_EMAIL }}
           jira-api-token: ${{ secrets.JIRA_API_TOKEN }}
-          jira-project-key: ${{ secrets.JIRA_PROJECT_KEY }}
+          jira-project-key: ${{ secrets.JIRA_PROJECT_KEY }} # Or a specific key for PHP deps?
           jira-issue-type: 'Task' # Or your desired issue type
+
+  # Job to check NPM dependencies
+  check_npm:
+    name: Check NPM Dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Outdated Dependency Check (NPM)
+        uses: shawnhooper/outdated-to-jira@staging # Or use @main or a specific tag/commit
+        with:
+          dependency-file: 'path/to/your/package.json' # Adjust path if needed
+          # Optional inputs:
+          # dry-run: 'true'
+          # packages: 'react lodash'
+
+          # Required JIRA configuration (use secrets!)
+          jira-url: ${{ secrets.JIRA_URL }}
+          jira-user-email: ${{ secrets.JIRA_USER_EMAIL }}
+          jira-api-token: ${{ secrets.JIRA_API_TOKEN }}
+          jira-project-key: ${{ secrets.JIRA_PROJECT_KEY }} # Or a specific key for JS deps?
+          jira-issue-type: 'Task' # Or your desired issue type
+
 ```
 
 **Action Inputs:**
