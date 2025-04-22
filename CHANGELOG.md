@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.1.0](https://github.com/shawnhooper/outdated-to-jira/compare/v1.0.0...v1.1.0) (2025-04-22)
+
+
+### Features
+
+* **CLI:** Added CLI Support ([8565dfd](https://github.com/shawnhooper/outdated-to-jira/commit/8565dfd5fdf6a1a4fb958ebc9f4070be6faa63a0))
+
+
+### Bug Fixes
+
+* Add missing bin file ([a914b6b](https://github.com/shawnhooper/outdated-to-jira/commit/a914b6b952f1af348745eee15d61e2718bc65807))
+* build composer at minimum version ([b70d147](https://github.com/shawnhooper/outdated-to-jira/commit/b70d1476938bda889773e980523f0c563ca058c2))
+* install PHP in docker container ([010c328](https://github.com/shawnhooper/outdated-to-jira/commit/010c328fec294f11dc527dbaceed46d1b0272efb))
+* php 8.2 build ([f8e1a8c](https://github.com/shawnhooper/outdated-to-jira/commit/f8e1a8c08c74233e1df4aa8e02246e3163ce2d1b))
+
 ## 1.0.0 (2025-04-21)
 
 
