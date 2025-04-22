@@ -1,0 +1,169 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+// Find vendor/autoload.php traversing up the directory tree
+$autoloadPath = __DIR__ . '/../../autoload.php'; // Usual location when installed via composer
+if (!file_exists($autoloadPath)) {
+    // Fallback for local development?
+    $autoloadPath = __DIR__ . '/../vendor/autoload.php';
+    if (!file_exists($autoloadPath)) {
+        fwrite(STDERR, "Cannot locate autoload.php. Did you run composer install?\n");
+        exit(1);
+    }
+}
+require $autoloadPath;
+
+use App\Service\DependencyCheckerService;
+use Dotenv\Dotenv;
+use Psr\Log\LoggerInterface;
+use Symfony\Component\Console\Application;
+use Symfony\Component\Console\Command\Command;
+use Symfony\Component\Console\Input\InputArgument;
+use Symfony\Component\Console\Input\InputInterface;
+use Symfony\Component\Console\Input\InputOption;
+use Symfony\Component\Console\Logger\ConsoleLogger;
+use Symfony\Component\Console\Output\OutputInterface;
+use Symfony\Component\Console\Helper\Table;
+
+$app = new Application('Outdated Dependency JIRA Checker (Library CLI)', '1.0.0'); // TODO: Version Sync?
+$app->add(new class extends Command {
+    protected static $defaultName = 'check';
+
+    protected function configure(): void
+    {
+        $this
+            ->setName('check')
+            ->setDescription('Checks a dependency file for outdated packages and creates JIRA tickets.')
+            ->addArgument('dependency-file', InputArgument::REQUIRED, 'Path to the composer.json or package.json file relative to the project root.')
+            ->addOption('dry-run', 'd', InputOption::VALUE_NONE, 'Simulate without creating JIRA tickets.')
+            ->addOption('package', 'p', InputOption::VALUE_OPTIONAL | InputOption::VALUE_IS_ARRAY, 'Only process specific package(s).')
+            // Add options for JIRA config to override .env
+            ->addOption('jira-url', null, InputOption::VALUE_OPTIONAL, 'JIRA base URL (e.g., https://your-domain.atlassian.net)')
+            ->addOption('jira-user', null, InputOption::VALUE_OPTIONAL, 'JIRA user email')
+            ->addOption('jira-token', null, InputOption::VALUE_OPTIONAL, 'JIRA API token')
+            ->addOption('jira-project', null, InputOption::VALUE_OPTIONAL, 'JIRA project key')
+            ->addOption('jira-type', null, InputOption::VALUE_OPTIONAL, 'JIRA issue type name');
+    }
+
+    protected function execute(InputInterface $input, OutputInterface $output): int
+    {
+        $logger = new ConsoleLogger($output);
+        $logger->info('CLI dependency check started.');
+
+        // --- Configuration Loading --- 
+        // Priority: CLI Option > Environment Variable (loaded from .env)
+        $projectRoot = dirname($GLOBALS['argv'][0], 2); // Assumes vendor/bin structure
+        $logger->debug('Attempting to load .env from project root.', ['path' => $projectRoot]);
+        try {
+            // Allow .env file in the *consuming project's root* to be loaded
+            if (file_exists($projectRoot . '/.env')) {
+                 Dotenv::createImmutable($projectRoot)->safeLoad();
+                 $logger->debug('.env loaded successfully.');
+            } else {
+                 $logger->debug('.env file not found in project root.');
+            }
+        } catch (\Exception $e) {
+            $logger->warning('Failed to load .env file.', ['error' => $e->getMessage()]);
+        }
+
+        $isDryRun = $input->getOption('dry-run');
+        $packagesToFilter = $input->getOption('package');
+
+        $config = [
+            'jira_url' => $input->getOption('jira-url') ?: ($_ENV['JIRA_URL'] ?? null),
+            'jira_user_email' => $input->getOption('jira-user') ?: ($_ENV['JIRA_USER_EMAIL'] ?? null),
+            'jira_api_token' => $input->getOption('jira-token') ?: ($_ENV['JIRA_API_TOKEN'] ?? null),
+            'jira_project_key' => $input->getOption('jira-project') ?: ($_ENV['JIRA_PROJECT_KEY'] ?? null),
+            'jira_issue_type' => $input->getOption('jira-type') ?: ($_ENV['JIRA_ISSUE_TYPE'] ?? null),
+            'dry_run' => $isDryRun,
+        ];
+
+        // Validate required JIRA config (unless dry-run)
+        $requiredEnv = ['jira_url', 'jira_user_email', 'jira_api_token', 'jira_project_key', 'jira_issue_type'];
+        $errors = [];
+        if (!$isDryRun) {
+            foreach ($requiredEnv as $var) {
+                if (empty($config[$var])) {
+                    $errors[] = "Required JIRA configuration '{$var}' is missing. Provide via CLI option or .env file.";
+                }
+            }
+        }
+
+        if (!empty($errors)) {
+            foreach ($errors as $error) {
+                $logger->error($error);
+            }
+            return Command::FAILURE;
+        }
+
+        // --- File Path Handling ---
+        $dependencyFilePathRelative = $input->getArgument('dependency-file');
+        // Assume the path is relative to the CWD (the root of the consuming project)
+        $dependencyFilePathAbsolute = getcwd() . '/' . ltrim($dependencyFilePathRelative, '/');
+        $logger->debug('Resolved dependency file path.', ['path' => $dependencyFilePathAbsolute]);
+
+        // --- Instantiate and Run Service ---
+        $logger->info('Instantiating DependencyCheckerService...');
+        try {
+            $checkerService = new DependencyCheckerService($config, $logger);
+            $results = $checkerService->process($dependencyFilePathAbsolute, $packagesToFilter);
+            $logger->info('Processing complete.');
+
+            // --- Output Results Table ---
+            if (empty($results)) {
+                $output->writeln("No outdated dependencies found or processed.");
+                return Command::SUCCESS;
+            }
+
+            $tableData = [];
+            $baseUrl = isset($config['jira_url']) ? rtrim($config['jira_url'], '/') : null;
+
+            foreach ($results as $pkgName => $result) {
+                $status = $result[DependencyCheckerService::RESULT_STATUS_KEY] ?? 'Error';
+                $jiraKey = $result[DependencyCheckerService::RESULT_JIRA_KEY] ?? null;
+                $displayStatus = ucwords(str_replace('_', ' ', $status));
+                $url = 'N/A';
+
+                if ($jiraKey) {
+                     $displayStatus .= " ({$jiraKey})";
+                     if ($baseUrl) {
+                        $url = $baseUrl . '/browse/' . $jiraKey;
+                     }
+                }
+
+                $tableData[] = [
+                    $pkgName,
+                    $displayStatus,
+                    $url,
+                ];
+            }
+
+            $table = new Table($output);
+            $table->setHeaders(['Package Name', 'Status', 'JIRA Ticket URL']);
+            $table->setRows($tableData);
+            $table->render();
+
+        } catch (\InvalidArgumentException | \RuntimeException $e) {
+            $logger->error("Processing failed: " . $e->getMessage());
+            // Log trace in verbose mode?
+            if ($output->isVerbose()) {
+                $output->writeln($e->getTraceAsString());
+            }
+            return Command::FAILURE;
+        } catch (\Exception $e) {
+            $logger->error("An unexpected error occurred: " . $e->getMessage());
+             if ($output->isVerbose()) {
+                $output->writeln($e->getTraceAsString());
+             }
+            return Command::FAILURE;
+        }
+
+        $logger->info('CLI dependency check finished.');
+        return Command::SUCCESS;
+    }
+});
+
+// Call run() on the Application instance
+$app->run(); 
