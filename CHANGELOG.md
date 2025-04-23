@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.2.0](https://github.com/shawnhooper/outdated-to-jira/compare/v1.1.2...v1.2.0) (2025-04-23)
+
+
+### Features
+
+* **pip:** Add pip support ([6f1fbff](https://github.com/shawnhooper/outdated-to-jira/commit/6f1fbffeb18ef89ee1bcf8c19d31184df40b8aea))
+
+
+### Miscellaneous Chores
+
+* fixing phpstan issues ([8043808](https://github.com/shawnhooper/outdated-to-jira/commit/804380842b7516e218d45366cf7a6d0b5e70a6e6))
+* linting ([08087bc](https://github.com/shawnhooper/outdated-to-jira/commit/08087bcbc6a4810cf89f8fff2c53a3d385dc8025))
+
 ## [1.1.2](https://github.com/shawnhooper/outdated-to-jira/compare/v1.1.1...v1.1.2) (2025-04-22)
 
 
