@@ -151,7 +151,7 @@ class DependencyCheckerService
         $outdatedDependencies = [];
         try {
             // Ensure $packageManagerOutput is not null before parsing
-            if ($packageManagerOutput === null) {
+            if (empty($packageManagerOutput)) {
                 $this->logger->error(sprintf('Output from %s was unexpectedly null.', $packageManager));
                 throw new \InvalidArgumentException(sprintf('Output from %s was null, cannot parse.', $packageManager));
             }
@@ -161,7 +161,7 @@ class DependencyCheckerService
              // Use sprintf for generic error message including the package manager
              $this->logger->error(sprintf('Error parsing %s output.', $packageManager), [
                  'exception' => $e,
-                 'output_preview' => substr($packageManagerOutput ?? '', 0, 200) // Handle potential null
+                 'output_preview' => substr($packageManagerOutput, 0, 200) // Handle potential null
              ]);
              throw new \RuntimeException(sprintf('Error parsing %s output: %s', $packageManager, $e->getMessage()), 0, $e);
         }
