@@ -75,10 +75,16 @@ class DependencyCheckerService
             $parser = new NpmOutputParser($this->logger);
             $command = ['npm', 'outdated', '--json'];
              $this->logger->info("Detected Node (npm) project.");
+        } elseif ($dependencyFileName === 'requirements.txt') { // Added block for pip
+            $packageManager = 'pip';
+            $parser = new PipOutputParser($this->logger);
+            // Ensure pip is available in the environment running this script
+            $command = ['pip', 'list', '--outdated', '--format=json'];
+            $this->logger->info("Detected Python (pip) project.");
         } else {
             $this->logger->error("Unsupported dependency file name.", ['file' => $dependencyFileName]);
             // phpcs:ignore Generic.Files.LineLength.TooLong
-            throw new \InvalidArgumentException("Unsupported dependency file: {$dependencyFileName}. Only 'composer.json' or 'package.json' are supported.");
+            throw new \InvalidArgumentException("Unsupported dependency file: {$dependencyFileName}. Only 'composer.json', 'package.json', or 'requirements.txt' are supported."); // Updated error message
         }
 
         // --- Execute Outdated Command ---
@@ -107,21 +113,52 @@ class DependencyCheckerService
                     // npm outdated with --json often returns exit code 1 *with* valid json output
                     $packageManagerOutput = $output;
                 }
+            } elseif ($packageManager === 'pip') { // Added block for pip execution
+                // pip list --outdated --format=json might also exit non-zero if outdated packages found? Assume yes for now.
+                // It seems pip list --outdated *does* exit 0 even if outdated packages are found.
+                // However, let's keep Process for consistency and capture stderr.
+                $pipProcess = new Process($command, $workingDirectory, null, null, 300.0);
+                $pipProcess->run();
+                $output = $pipProcess->getOutput();
+                $errorOutput = $pipProcess->getErrorOutput();
+
+                // Check for actual execution errors, not just non-zero exit code if output exists
+                if (!$pipProcess->isSuccessful() && empty($output) && !empty($errorOutput)) {
+                    $this->logger->error(sprintf('pip command failed: %s', $errorOutput), ['exit_code' => $pipProcess->getExitCode()]);
+                    throw new \RuntimeException(sprintf('pip command failed: %s', $errorOutput));
+                } elseif (empty(trim($output)) && $pipProcess->isSuccessful()) {
+                     $this->logger->info('Pip output is empty and exit code 0, likely no outdated dependencies.');
+                     $packageManagerOutput = '[]'; // Empty JSON array for no outdated deps
+                } else {
+                    // Even if exit code is non-zero, if we have output, try parsing it.
+                    // Log stderr as warning if present.
+                    if (!empty($errorOutput)) {
+                         $this->logger->warning('pip command produced stderr output.', ['stderr' => $errorOutput, 'exit_code' => $pipProcess->getExitCode()]);
+                    }
+                    $packageManagerOutput = $output;
+                }
             }
         } catch (ProcessFailedException | \RuntimeException | \Exception $e) {
-            $this->logger->error('Error running outdated command.', ['exception' => $e]);
+            // Use sprintf for generic error message including the package manager
+            $this->logger->error(sprintf('Error running %s outdated command.', $packageManager), ['exception' => $e]);
             throw new \RuntimeException(sprintf('Error running %s outdated command: %s', $packageManager, $e->getMessage()), 0, $e);
         }
 
         // --- Parse Output ---
         $outdatedDependencies = [];
         try {
+            // Ensure $packageManagerOutput is not null before parsing
+             if ($packageManagerOutput === null) {
+                 $this->logger->error(sprintf('Output from %s was unexpectedly null.', $packageManager));
+                 throw new \InvalidArgumentException(sprintf('Output from %s was null, cannot parse.', $packageManager));
+             }
             $outdatedDependencies = $parser->parse($packageManagerOutput);
             $this->logger->info(sprintf('Found %d outdated %s dependencies.', count($outdatedDependencies), $packageManager));
         } catch (\JsonException | \InvalidArgumentException $e) {
+             // Use sprintf for generic error message including the package manager
              $this->logger->error(sprintf('Error parsing %s output.', $packageManager), [
                  'exception' => $e,
-                 'output_preview' => substr($packageManagerOutput, 0, 200)
+                 'output_preview' => substr($packageManagerOutput ?? '', 0, 200) // Handle potential null
              ]);
              throw new \RuntimeException(sprintf('Error parsing %s output: %s', $packageManager, $e->getMessage()), 0, $e);
         }
