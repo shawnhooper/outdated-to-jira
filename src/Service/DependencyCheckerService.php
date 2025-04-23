@@ -84,7 +84,7 @@ class DependencyCheckerService
         } else {
             $this->logger->error("Unsupported dependency file name.", ['file' => $dependencyFileName]);
             // phpcs:ignore Generic.Files.LineLength.TooLong
-            throw new \InvalidArgumentException("Unsupported dependency file: {$dependencyFileName}. Only 'composer.json', 'package.json', or 'requirements.txt' are supported."); // Updated error message
+            throw new \InvalidArgumentException("Unsupported file: {$dependencyFileName}. Only 'composer.json', 'package.json', 'requirements.txt'");
         }
 
         // --- Execute Outdated Command ---
@@ -133,7 +133,10 @@ class DependencyCheckerService
                     // Even if exit code is non-zero, if we have output, try parsing it.
                     // Log stderr as warning if present.
                     if (!empty($errorOutput)) {
-                         $this->logger->warning('pip command produced stderr output.', ['stderr' => $errorOutput, 'exit_code' => $pipProcess->getExitCode()]);
+                         $this->logger->warning('pip command produced stderr output.', [
+                            'stderr' => $errorOutput,
+                            'exit_code' => $pipProcess->getExitCode()
+                         ]);
                     }
                     $packageManagerOutput = $output;
                 }
@@ -148,10 +151,10 @@ class DependencyCheckerService
         $outdatedDependencies = [];
         try {
             // Ensure $packageManagerOutput is not null before parsing
-             if ($packageManagerOutput === null) {
-                 $this->logger->error(sprintf('Output from %s was unexpectedly null.', $packageManager));
-                 throw new \InvalidArgumentException(sprintf('Output from %s was null, cannot parse.', $packageManager));
-             }
+            if ($packageManagerOutput === null) {
+                $this->logger->error(sprintf('Output from %s was unexpectedly null.', $packageManager));
+                throw new \InvalidArgumentException(sprintf('Output from %s was null, cannot parse.', $packageManager));
+            }
             $outdatedDependencies = $parser->parse($packageManagerOutput);
             $this->logger->info(sprintf('Found %d outdated %s dependencies.', count($outdatedDependencies), $packageManager));
         } catch (\JsonException | \InvalidArgumentException $e) {

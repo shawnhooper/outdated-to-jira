@@ -62,4 +62,4 @@ class PipOutputParser
 
         return $dependencies;
     }
-} 
+}
