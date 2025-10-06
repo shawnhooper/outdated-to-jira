@@ -334,7 +334,7 @@ class JiraService
 
         // Using fuzzy match `~` which is generally more robust for text fields
         $jql = sprintf(
-            'project = "%s" AND summary ~ "%s" AND statusCategory != Done ORDER BY created DESC',
+            'project = "%s" AND summary ~ "%s" AND statusCategory NOT IN ("Done", "Resolved") ORDER BY created DESC',
             $this->config['jira_project_key'],
             $escapedSummary // Use the escaped summary
         );
