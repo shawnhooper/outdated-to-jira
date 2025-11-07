@@ -17,6 +17,7 @@ use Psr\Log\NullLogger;
 class JiraService
 {
     public const DRY_RUN_WOULD_CREATE = 'DRY_RUN_WOULD_CREATE'; // Add constant
+    private const CLOSED_STATUS_NAMES = ['closed', 'resolved'];
 
     private HttpClient $httpClient;
     private LoggerInterface $logger;
@@ -330,19 +331,26 @@ class JiraService
         ); // phpcs:ignore Generic.Files.LineLength.TooLong
 
         // JQL requires quotes within the string to be escaped with a backslash
-        $escapedSummary = str_replace('"', '\\"', $summary);
+        $escapedSummary = str_replace(
+            ['\\', '"'],
+            ['\\\\', '\\"'],
+            $summary
+        );
 
-        // Using fuzzy match `~` which is generally more robust for text fields
         $jql = sprintf(
-            'project = "%s" AND summary ~ "%s" AND statusCategory NOT IN ("Done", "Resolved") ORDER BY created DESC',
+            'project = "%s" AND summary ~ "%s" ORDER BY created DESC',
             $this->config['jira_project_key'],
-            $escapedSummary // Use the escaped summary
+            sprintf('"%s"', $escapedSummary)
         );
 
         // echo "[DIAGNOSTIC] About to enter search try block for: {$dependency->name}" . PHP_EOL; // REMOVE
         try {
             $response = $this->httpClient->get('search', [
-                'query' => ['jql' => $jql, 'fields' => 'key,summary', 'maxResults' => 5] // Fetch summary, check a few results
+                'query' => [
+                    'jql' => $jql,
+                    'fields' => 'summary,status',
+                    'maxResults' => 10
+                ] // Fetch summary and status, check a few results
             ]);
 
             $statusCode = $response->getStatusCode();
@@ -375,20 +383,38 @@ class JiraService
                 // Check if total > 0 and issues exist
                 // phpcs:ignore Generic.Files.LineLength.TooLong
                 if (isset($responseData['total']) && $responseData['total'] > 0 && isset($responseData['issues']) && is_array($responseData['issues'])) {
-                    // Iterate through returned issues and check for EXACT summary match
                     foreach ($responseData['issues'] as $issue) { // phpcs:ignore Generic.Files.LineLength.TooLong
-                        if (isset($issue['fields']['summary']) && $issue['fields']['summary'] === $summary) {
-                            $foundKey = $issue['key'];
-                            $this->logger->debug(
-                                'Found existing open JIRA ticket via search with exact summary match.',
-                                ['key' => $foundKey]
-                            );
-                            return $foundKey;
+                        $fields = $issue['fields'] ?? [];
+                        if (($fields['summary'] ?? null) !== $summary) {
+                            continue;
                         }
+
+                        $status = $fields['status'] ?? [];
+                        $statusName = strtolower((string) ($status['name'] ?? ''));
+                        $statusCategoryKey = strtolower((string) ($status['statusCategory']['key'] ?? ''));
+                        $isClosed = in_array($statusName, self::CLOSED_STATUS_NAMES, true) || $statusCategoryKey === 'done';
+
+                        if ($isClosed) {
+                            $this->logger->debug(
+                                'Matching ticket is already Closed/Resolved. Continuing search for open issues.',
+                                [
+                                    'key' => $issue['key'] ?? 'UNKNOWN',
+                                    'status' => $status['name'] ?? 'UNKNOWN'
+                                ]
+                            );
+                            continue;
+                        }
+
+                        $foundKey = $issue['key'];
+                        $this->logger->debug(
+                            'Found existing open JIRA ticket via search with exact summary match.',
+                            ['key' => $foundKey]
+                        );
+                        return $foundKey;
                     }
-                    // If loop completes without finding an exact match
+
                     $this->logger->debug(
-                        'Search returned issues, but none had an exact summary match.',
+                        'Matching tickets exist but all are Closed/Resolved.',
                         ['expected_summary' => $summary]
                     ); // phpcs:ignore Generic.Files.LineLength.TooLong
                     return null;
