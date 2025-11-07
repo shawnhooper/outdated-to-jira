@@ -105,6 +105,82 @@ class JiraServiceTest extends TestCase
         $this->assertNull($result);
     }
 
+    public function testFindExistingTicketIgnoresClosedIssues(): void
+    {
+        $service = $this->createService();
+        $dependency = new Dependency('test/package', '1.0.0', '1.1.0', 'composer');
+        $expectedSummary = 'Update Composer package test/package from 1.0.0 to 1.1.0';
+
+        $mockResponseJson = json_encode([
+            'total' => 2,
+            'issues' => [
+                [
+                    'key' => 'TEST-200',
+                    'fields' => [
+                        'summary' => $expectedSummary,
+                        'status' => [
+                            'name' => 'Resolved',
+                            'statusCategory' => ['key' => 'done']
+                        ]
+                    ]
+                ],
+                [
+                    'key' => 'TEST-201',
+                    'fields' => [
+                        'summary' => $expectedSummary,
+                        'status' => [
+                            'name' => 'Closed',
+                            'statusCategory' => ['key' => 'done']
+                        ]
+                    ]
+                ],
+            ]
+        ]);
+        $this->mockHandler->append(new Response(200, [], $mockResponseJson));
+
+        $result = $service->findExistingTicket($dependency);
+
+        $this->assertNull($result);
+    }
+
+    public function testFindExistingTicketReturnsOpenIssueWhenMixedStatuses(): void
+    {
+        $service = $this->createService();
+        $dependency = new Dependency('test/package', '1.0.0', '1.1.0', 'composer');
+        $expectedSummary = 'Update Composer package test/package from 1.0.0 to 1.1.0';
+
+        $mockResponseJson = json_encode([
+            'total' => 2,
+            'issues' => [
+                [
+                    'key' => 'TEST-202',
+                    'fields' => [
+                        'summary' => $expectedSummary,
+                        'status' => [
+                            'name' => 'Resolved',
+                            'statusCategory' => ['key' => 'done']
+                        ]
+                    ]
+                ],
+                [
+                    'key' => 'TEST-203',
+                    'fields' => [
+                        'summary' => $expectedSummary,
+                        'status' => [
+                            'name' => 'In Progress',
+                            'statusCategory' => ['key' => 'indeterminate']
+                        ]
+                    ]
+                ],
+            ]
+        ]);
+        $this->mockHandler->append(new Response(200, [], $mockResponseJson));
+
+        $result = $service->findExistingTicket($dependency);
+
+        $this->assertEquals('TEST-203', $result);
+    }
+
     public function testFindExistingTicketNoResults(): void
     {
         $service = $this->createService();
