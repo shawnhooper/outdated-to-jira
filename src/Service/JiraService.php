@@ -423,6 +423,7 @@ class JiraService
                         return $foundKey;
                     }
 
+
                     if ($closedMatch !== null) {
                         $this->logger->info(
                             'Matching ticket found but it is Closed/Resolved. Reusing existing key to avoid duplicates.',
