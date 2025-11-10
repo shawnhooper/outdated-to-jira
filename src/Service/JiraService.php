@@ -385,7 +385,12 @@ class JiraService
                 // Check if total > 0 and issues exist
                 // phpcs:ignore Generic.Files.LineLength.TooLong
                 $closedMatch = null;
-                if (isset($responseData['total']) && $responseData['total'] > 0 && isset($responseData['issues']) && is_array($responseData['issues'])) {
+                if (
+                    isset($responseData['total'])
+                    && $responseData['total'] > 0
+                    && isset($responseData['issues'])
+                    && is_array($responseData['issues'])
+                ) {
                     foreach ($responseData['issues'] as $issue) { // phpcs:ignore Generic.Files.LineLength.TooLong
                         $fields = $issue['fields'] ?? [];
                         if (($fields['summary'] ?? null) !== $summary) {
