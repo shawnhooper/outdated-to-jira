@@ -105,7 +105,7 @@ class JiraServiceTest extends TestCase
         $this->assertNull($result);
     }
 
-    public function testFindExistingTicketIgnoresClosedIssues(): void
+    public function testFindExistingTicketReturnsClosedIssueWhenOnlyClosedMatches(): void
     {
         $service = $this->createService();
         $dependency = new Dependency('test/package', '1.0.0', '1.1.0', 'composer');
@@ -140,7 +140,7 @@ class JiraServiceTest extends TestCase
 
         $result = $service->findExistingTicket($dependency);
 
-        $this->assertNull($result);
+        $this->assertEquals('TEST-200', $result);
     }
 
     public function testFindExistingTicketReturnsOpenIssueWhenMixedStatuses(): void
@@ -322,6 +322,24 @@ class JiraServiceTest extends TestCase
 
         $result = $service->createTicket($dependency);
         $this->assertEquals($newKey, $result);
+    }
+
+    public function testCreateTicketUsesSummaryCacheToAvoidDuplicateCreationInSameRun(): void
+    {
+        $service = $this->createService();
+        $dependency = new Dependency('test/package', '1.0.0', '2.0.0', 'composer');
+
+        $mockSearchResponse = json_encode(['total' => 0, 'issues' => []]);
+        $mockCreateResponse = json_encode(['key' => 'TEST-600']);
+
+        $this->mockHandler->append(new Response(200, [], $mockSearchResponse));
+        $this->mockHandler->append(new Response(201, [], $mockCreateResponse));
+
+        $firstResult = $service->createTicket($dependency);
+        $this->assertSame('TEST-600', $firstResult);
+
+        $secondResult = $service->createTicket($dependency);
+        $this->assertSame('TEST-600', $secondResult);
     }
 
     public function testCreateTicketApiError(): void

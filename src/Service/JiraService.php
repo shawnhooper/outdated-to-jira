@@ -22,6 +22,13 @@ class JiraService
     private HttpClient $httpClient;
     private LoggerInterface $logger;
     private array $config;
+    /**
+     * Cache of summary => issue key to avoid duplicate creations within the same run
+     * when Jira search indexing has not yet caught up.
+     *
+     * @var array<string, string|null>
+     */
+    private array $summaryTicketCache = [];
 
     public function __construct(array $config, ?LoggerInterface $logger = null, ?HttpClient $httpClient = null)
     {
@@ -98,9 +105,17 @@ class JiraService
      */
     public function createTicket(Dependency $dependency): ?string
     {
+        $summary = $this->buildSummary($dependency);
+
+        if (array_key_exists($summary, $this->summaryTicketCache)) {
+            $this->logger->debug('Summary found in ticket cache, skipping JIRA search.', ['summary' => $summary]);
+            return $this->summaryTicketCache[$summary];
+        }
+
         // --- Check for existing duplicate ticket ---
         $existingKey = $this->findExistingTicket($dependency);
         if ($existingKey !== null) {
+            $this->summaryTicketCache[$summary] = $existingKey;
             $this->logger->info(
                 'Skipping creation: Found existing open ticket.',
                 [
@@ -133,14 +148,6 @@ class JiraService
         }; // phpcs:ignore Generic.Files.LineLength.TooLong
 
         // --- Proceed with actual creation if not dry run and no existing ticket ---
-        $summary = sprintf(
-            'Update %s package %s from %s to %s',
-            ucfirst($dependency->packageManager),
-            $dependency->name,
-            $dependency->currentVersion,
-            $dependency->latestVersion
-        ); // phpcs:ignore Generic.Files.LineLength.TooLong
-
         $description = sprintf(
             // phpcs:ignore Generic.Files.LineLength.TooLong
             "The %s package *%s* is outdated.\n\nCurrent version: %s\nLatest version: %s\n\nPlease update the package and test accordingly.",
@@ -271,6 +278,7 @@ class JiraService
                             'summary' => $summary
                          ]
                      );
+                     $this->summaryTicketCache[$summary] = $issueKey;
                      return $issueKey;
                 } else {
                      // Removed echo
@@ -322,13 +330,7 @@ class JiraService
     {
         // echo "[DIAGNOSTIC] Entering findExistingTicket for: {$dependency->name}" . PHP_EOL; // REMOVE
         // Construct the exact summary we would use for a new ticket
-        $summary = sprintf(
-            'Update %s package %s from %s to %s',
-            ucfirst($dependency->packageManager),
-            $dependency->name,
-            $dependency->currentVersion,
-            $dependency->latestVersion
-        ); // phpcs:ignore Generic.Files.LineLength.TooLong
+        $summary = $this->buildSummary($dependency);
 
         // JQL requires quotes within the string to be escaped with a backslash
         $escapedSummary = str_replace(
@@ -338,9 +340,9 @@ class JiraService
         );
 
         $jql = sprintf(
-            'project = "%s" AND summary ~ "%s" ORDER BY created DESC',
+            'project = "%s" AND summary = "%s" ORDER BY created DESC',
             $this->config['jira_project_key'],
-            sprintf('"%s"', $escapedSummary)
+            $escapedSummary
         );
 
         // echo "[DIAGNOSTIC] About to enter search try block for: {$dependency->name}" . PHP_EOL; // REMOVE
@@ -382,7 +384,13 @@ class JiraService
 
                 // Check if total > 0 and issues exist
                 // phpcs:ignore Generic.Files.LineLength.TooLong
-                if (isset($responseData['total']) && $responseData['total'] > 0 && isset($responseData['issues']) && is_array($responseData['issues'])) {
+                $closedMatch = null;
+                if (
+                    isset($responseData['total'])
+                    && $responseData['total'] > 0
+                    && isset($responseData['issues'])
+                    && is_array($responseData['issues'])
+                ) {
                     foreach ($responseData['issues'] as $issue) { // phpcs:ignore Generic.Files.LineLength.TooLong
                         $fields = $issue['fields'] ?? [];
                         if (($fields['summary'] ?? null) !== $summary) {
@@ -395,8 +403,15 @@ class JiraService
                         $isClosed = in_array($statusName, self::CLOSED_STATUS_NAMES, true) || $statusCategoryKey === 'done';
 
                         if ($isClosed) {
+                            if ($closedMatch === null) {
+                                $closedMatch = [
+                                    'key' => $issue['key'] ?? 'UNKNOWN',
+                                    'status' => $status['name'] ?? 'UNKNOWN'
+                                ];
+                            }
+
                             $this->logger->debug(
-                                'Matching ticket is already Closed/Resolved. Continuing search for open issues.',
+                                'Matching ticket is already Closed/Resolved. Holding key for reuse if no open issues exist.',
                                 [
                                     'key' => $issue['key'] ?? 'UNKNOWN',
                                     'status' => $status['name'] ?? 'UNKNOWN'
@@ -413,8 +428,21 @@ class JiraService
                         return $foundKey;
                     }
 
+
+                    if ($closedMatch !== null) {
+                        $this->logger->info(
+                            'Matching ticket found but it is Closed/Resolved. Reusing existing key to avoid duplicates.',
+                            [
+                                'key' => $closedMatch['key'],
+                                'status' => $closedMatch['status'],
+                                'summary' => $summary
+                            ]
+                        ); // phpcs:ignore Generic.Files.LineLength.TooLong
+                        return $closedMatch['key'];
+                    }
+
                     $this->logger->debug(
-                        'Matching tickets exist but all are Closed/Resolved.',
+                        'No existing ticket with an exact summary match was found.',
                         ['expected_summary' => $summary]
                     ); // phpcs:ignore Generic.Files.LineLength.TooLong
                     return null;
@@ -451,6 +479,17 @@ class JiraService
              ); // phpcs:ignore Generic.Files.LineLength.TooLong
              return null; // Proceed with creation on error?
         }
+    }
+
+    private function buildSummary(Dependency $dependency): string
+    {
+        return sprintf(
+            'Update %s package %s from %s to %s',
+            ucfirst($dependency->packageManager),
+            $dependency->name,
+            $dependency->currentVersion,
+            $dependency->latestVersion
+        );
     }
 
      // Method to determine SemVer level difference
