@@ -339,8 +339,9 @@ class JiraService
             $summary
         );
 
+        // Use phrase match (~) because text fields such as summary do not support equality (=) checks.
         $jql = sprintf(
-            'project = "%s" AND summary = "%s" ORDER BY created DESC',
+            'project = "%s" AND summary ~ "\"%s\"" ORDER BY created DESC',
             $this->config['jira_project_key'],
             $escapedSummary
         );
