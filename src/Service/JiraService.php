@@ -332,12 +332,8 @@ class JiraService
         // Construct the exact summary we would use for a new ticket
         $summary = $this->buildSummary($dependency);
 
-        // JQL requires quotes within the string to be escaped with a backslash
-        $escapedSummary = str_replace(
-            ['\\', '"'],
-            ['\\\\', '\\"'],
-            $summary
-        );
+        // JQL requires quotes and special characters to be escaped (Lucene syntax)
+        $escapedSummary = $this->escapeJqlPhrase($summary);
 
         // Use phrase match (~) because text fields such as summary do not support equality (=) checks.
         $jql = sprintf(
@@ -480,6 +476,20 @@ class JiraService
              ); // phpcs:ignore Generic.Files.LineLength.TooLong
              return null; // Proceed with creation on error?
         }
+    }
+
+    /**
+     * Escapes Lucene special characters so the summary can be used in a quoted JQL text search.
+     */
+    private function escapeJqlPhrase(string $value): string
+    {
+        $escaped = preg_replace_callback(
+            '/([+\-!(){}\[\]^"~*?:\\\\\\/&|])/',
+            static fn(array $matches): string => '\\' . $matches[0],
+            $value
+        );
+
+        return $escaped ?? $value;
     }
 
     private function buildSummary(Dependency $dependency): string

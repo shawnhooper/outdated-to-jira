@@ -9,6 +9,7 @@ use App\ValueObject\Dependency;
 use GuzzleHttp\Client as HttpClient;
 use GuzzleHttp\Handler\MockHandler;
 use GuzzleHttp\HandlerStack;
+use GuzzleHttp\Middleware;
 use GuzzleHttp\Psr7\Response;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
@@ -22,6 +23,8 @@ class JiraServiceTest extends TestCase
     private HttpClient $mockHttpClient;
     private LoggerInterface $logger;
     private array $baseConfig;
+    /** @var array<int, array{request:\Psr\Http\Message\RequestInterface,response:\Psr\Http\Message\ResponseInterface,options:array}> */
+    private array $historyContainer;
 
     protected function setUp(): void
     {
@@ -29,7 +32,9 @@ class JiraServiceTest extends TestCase
 
         // Create a mock handler for Guzzle
         $this->mockHandler = new MockHandler();
+        $this->historyContainer = [];
         $handlerStack = HandlerStack::create($this->mockHandler);
+        $handlerStack->push(Middleware::history($this->historyContainer));
         $this->mockHttpClient = new HttpClient(['handler' => $handlerStack]);
 
         // Use NullLogger or a spy logger if needed
@@ -51,6 +56,17 @@ class JiraServiceTest extends TestCase
         $config = array_merge($this->baseConfig, $configOverrides);
         // Pass the mocked HttpClient and Logger to the service
         return new JiraService($config, $this->logger, $this->mockHttpClient);
+    }
+
+    private function escapeJqlPhrase(string $value): string
+    {
+        $escaped = preg_replace_callback(
+            '/([+\-!(){}\[\]^"~*?:\\\\\\/&|])/',
+            static fn(array $matches): string => '\\' . $matches[0],
+            $value
+        );
+
+        return $escaped ?? $value;
     }
 
     // --- findExistingTicket Tests ---
@@ -179,6 +195,43 @@ class JiraServiceTest extends TestCase
         $result = $service->findExistingTicket($dependency);
 
         $this->assertEquals('TEST-203', $result);
+    }
+
+    public function testFindExistingTicketEscapesSpecialCharactersInSummary(): void
+    {
+        $service = $this->createService();
+        $dependency = new Dependency('@scope/package/name', '2.2.17', '2.2.18', 'npm');
+        $expectedSummary = 'Update Npm package @scope/package/name from 2.2.17 to 2.2.18';
+
+        $mockResponseJson = json_encode([
+            'total' => 1,
+            'issues' => [
+                [
+                    'key' => 'TEST-777',
+                    'fields' => [
+                        'summary' => $expectedSummary
+                    ]
+                ]
+            ]
+        ]);
+        $this->mockHandler->append(new Response(200, [], $mockResponseJson));
+
+        $service->findExistingTicket($dependency);
+
+        $this->assertNotEmpty($this->historyContainer);
+        /** @var array{request:\Psr\Http\Message\RequestInterface,response:\Psr\Http\Message\ResponseInterface,options:array} $lastRequestData */
+        $lastRequestData = end($this->historyContainer);
+        $lastRequest = $lastRequestData['request'];
+
+        parse_str($lastRequest->getUri()->getQuery(), $queryParams);
+        $jqlQuery = $queryParams['jql'] ?? '';
+        $this->assertNotSame('', $jqlQuery, 'Expected JQL query to be present in request.');
+        $this->assertStringContainsString('@scope\\/package\\/name', $jqlQuery);
+        $expectedJqlSnippet = sprintf(
+            'summary ~ "\\"%s\\""',
+            $this->escapeJqlPhrase($expectedSummary)
+        );
+        $this->assertStringContainsString($expectedJqlSnippet, $jqlQuery);
     }
 
     public function testFindExistingTicketNoResults(): void
