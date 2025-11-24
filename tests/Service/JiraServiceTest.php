@@ -58,6 +58,17 @@ class JiraServiceTest extends TestCase
         return new JiraService($config, $this->logger, $this->mockHttpClient);
     }
 
+    private function escapeJqlPhrase(string $value): string
+    {
+        $escaped = preg_replace_callback(
+            '/([+\-!(){}\[\]^"~*?:\\\\\\/&|])/',
+            static fn(array $matches): string => '\\' . $matches[0],
+            $value
+        );
+
+        return $escaped ?? $value;
+    }
+
     // --- findExistingTicket Tests ---
 
     public function testFindExistingTicketSuccess(): void
@@ -208,14 +219,19 @@ class JiraServiceTest extends TestCase
         $service->findExistingTicket($dependency);
 
         $this->assertNotEmpty($this->historyContainer);
+        /** @var array{request:\Psr\Http\Message\RequestInterface,response:\Psr\Http\Message\ResponseInterface,options:array} $lastRequestData */
         $lastRequestData = end($this->historyContainer);
-        $this->assertIsArray($lastRequestData);
-        $lastRequest = $lastRequestData['request'] ?? null;
-        $this->assertNotNull($lastRequest);
+        $lastRequest = $lastRequestData['request'];
 
-        $decodedQuery = urldecode($lastRequest->getUri()->getQuery());
-        $this->assertStringContainsString('@scope\\/package\\/name', $decodedQuery);
-        $this->assertStringContainsString('summary ~ "\\"', $decodedQuery);
+        parse_str($lastRequest->getUri()->getQuery(), $queryParams);
+        $jqlQuery = $queryParams['jql'] ?? '';
+        $this->assertNotSame('', $jqlQuery, 'Expected JQL query to be present in request.');
+        $this->assertStringContainsString('@scope\\/package\\/name', $jqlQuery);
+        $expectedJqlSnippet = sprintf(
+            'summary ~ "\\"%s\\""',
+            $this->escapeJqlPhrase($expectedSummary)
+        );
+        $this->assertStringContainsString($expectedJqlSnippet, $jqlQuery);
     }
 
     public function testFindExistingTicketNoResults(): void
