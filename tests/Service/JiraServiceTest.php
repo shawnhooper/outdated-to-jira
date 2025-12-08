@@ -226,12 +226,38 @@ class JiraServiceTest extends TestCase
         parse_str($lastRequest->getUri()->getQuery(), $queryParams);
         $jqlQuery = $queryParams['jql'] ?? '';
         $this->assertNotSame('', $jqlQuery, 'Expected JQL query to be present in request.');
-        $this->assertStringContainsString('@scope\\/package\\/name', $jqlQuery);
-        $expectedJqlSnippet = sprintf(
-            'summary ~ "\\"%s\\""',
-            $this->escapeJqlPhrase($expectedSummary)
-        );
-        $this->assertStringContainsString($expectedJqlSnippet, $jqlQuery);
+        $this->assertStringContainsString('summary ~ "\"@scope\\/package\\/name\""', $jqlQuery);
+        $this->assertStringContainsString('summary ~ "\"2.2.17\""', $jqlQuery);
+        $this->assertStringContainsString('summary ~ "\"2.2.18\""', $jqlQuery);
+        $this->assertStringContainsString('summary ~ "\"' . $this->escapeJqlPhrase($expectedSummary) . '\""', $jqlQuery);
+    }
+
+    public function testFindExistingTicketMatchesNormalizedSummary(): void
+    {
+        $service = $this->createService();
+        $dependency = new Dependency('test/package', '1.0.0', '1.1.0', 'composer');
+        $expectedSummary = 'Update Composer package test/package from 1.0.0 to 1.1.0';
+
+        $mockResponseJson = json_encode([
+            'total' => 1,
+            'issues' => [
+                [
+                    'key' => 'TEST-888',
+                    'fields' => [
+                        'summary' => ' Update   Composer  package  test/package   from  1.0.0  to  1.1.0  ',
+                        'status' => [
+                            'name' => 'To Do',
+                            'statusCategory' => ['key' => 'new']
+                        ]
+                    ]
+                ]
+            ]
+        ]);
+        $this->mockHandler->append(new Response(200, [], $mockResponseJson));
+
+        $result = $service->findExistingTicket($dependency);
+
+        $this->assertSame('TEST-888', $result);
     }
 
     public function testFindExistingTicketNoResults(): void

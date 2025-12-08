@@ -331,16 +331,20 @@ class JiraService
         // echo "[DIAGNOSTIC] Entering findExistingTicket for: {$dependency->name}" . PHP_EOL; // REMOVE
         // Construct the exact summary we would use for a new ticket
         $summary = $this->buildSummary($dependency);
+        $normalizedSummary = $this->normalizeSummary($summary);
 
-        // JQL requires quotes and special characters to be escaped (Lucene syntax)
-        $escapedSummary = $this->escapeJqlPhrase($summary);
+        // Build a more robust search that looks for all key tokens (package name + both versions)
+        // so we do not rely on Jira's phrase matching for the full summary, which can be brittle
+        // with punctuation such as dotted version numbers.
+        $jqlParts = [
+            sprintf('project = "%s"', $this->config['jira_project_key']),
+            sprintf('summary ~ "\\"%s\\""', $this->escapeJqlPhrase($dependency->name)),
+            sprintf('summary ~ "\\"%s\\""', $this->escapeJqlPhrase($dependency->currentVersion)),
+            sprintf('summary ~ "\\"%s\\""', $this->escapeJqlPhrase($dependency->latestVersion)),
+            sprintf('summary ~ "\\"%s\\""', $this->escapeJqlPhrase($summary)),
+        ];
 
-        // Use phrase match (~) because text fields such as summary do not support equality (=) checks.
-        $jql = sprintf(
-            'project = "%s" AND summary ~ "\"%s\"" ORDER BY created DESC',
-            $this->config['jira_project_key'],
-            $escapedSummary
-        );
+        $jql = implode(' AND ', $jqlParts) . ' ORDER BY created DESC';
 
         // echo "[DIAGNOSTIC] About to enter search try block for: {$dependency->name}" . PHP_EOL; // REMOVE
         try {
@@ -348,7 +352,7 @@ class JiraService
                 'query' => [
                     'jql' => $jql,
                     'fields' => 'summary,status',
-                    'maxResults' => 10
+                    'maxResults' => 25
                 ] // Fetch summary and status, check a few results
             ]);
 
@@ -390,7 +394,8 @@ class JiraService
                 ) {
                     foreach ($responseData['issues'] as $issue) { // phpcs:ignore Generic.Files.LineLength.TooLong
                         $fields = $issue['fields'] ?? [];
-                        if (($fields['summary'] ?? null) !== $summary) {
+                        $issueSummary = $fields['summary'] ?? '';
+                        if ($this->normalizeSummary($issueSummary) !== $normalizedSummary) {
                             continue;
                         }
 
@@ -501,6 +506,17 @@ class JiraService
             $dependency->currentVersion,
             $dependency->latestVersion
         );
+    }
+
+    /**
+     * Normalizes a summary string for safe equality checks.
+     */
+    private function normalizeSummary(string $summary): string
+    {
+        $normalized = strtolower($summary);
+        $normalized = preg_replace('/[^a-z0-9]+/i', ' ', $normalized);
+
+        return trim(preg_replace('/\\s+/', ' ', $normalized ?? $summary));
     }
 
      // Method to determine SemVer level difference
