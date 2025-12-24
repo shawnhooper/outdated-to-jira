@@ -346,6 +346,20 @@ class JiraService
 
         $jql = implode(' AND ', $jqlParts) . ' ORDER BY created DESC';
 
+        // Extra console/debug logs to help verify the JQL being used for duplicate detection
+        $this->logger->info(
+            'Searching for existing ticket with JQL parts',
+            [
+                'dependency' => $dependency->name,
+                'current' => $dependency->currentVersion,
+                'latest' => $dependency->latestVersion,
+                'summary' => $summary,
+                'normalized_summary' => $normalizedSummary,
+                'jql_parts' => $jqlParts,
+                'jql' => $jql,
+            ]
+        );
+
         // echo "[DIAGNOSTIC] About to enter search try block for: {$dependency->name}" . PHP_EOL; // REMOVE
         try {
             $response = $this->httpClient->get('search', [
@@ -379,6 +393,8 @@ class JiraService
                     'JIRA Search API Response (200 OK)',
                     [
                         'jql' => $jql,
+                        'total' => $responseData['total'] ?? null,
+                        'returned_issues' => is_array($responseData['issues'] ?? null) ? count($responseData['issues']) : 0,
                         // 'response_data' => $responseData // Might be too verbose for debug?
                     ]
                 );
@@ -402,6 +418,17 @@ class JiraService
                         $status = $fields['status'] ?? [];
                         $statusName = strtolower((string) ($status['name'] ?? ''));
                         $statusCategoryKey = strtolower((string) ($status['statusCategory']['key'] ?? ''));
+                        $this->logger->debug(
+                            'Inspecting JIRA search candidate for summary match.',
+                            [
+                                'key' => $issue['key'] ?? 'UNKNOWN',
+                                'issue_summary' => $issueSummary,
+                                'normalized_issue_summary' => $this->normalizeSummary($issueSummary),
+                                'target_normalized_summary' => $normalizedSummary,
+                                'status' => $statusName,
+                                'status_category' => $statusCategoryKey
+                            ]
+                        );
                         $isClosed = in_array($statusName, self::CLOSED_STATUS_NAMES, true) || $statusCategoryKey === 'done';
 
                         if ($isClosed) {
