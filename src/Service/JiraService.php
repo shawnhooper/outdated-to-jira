@@ -333,15 +333,12 @@ class JiraService
         $summary = $this->buildSummary($dependency);
         $normalizedSummary = $this->normalizeSummary($summary);
 
-        // Build a more robust search that looks for all key tokens (package name + both versions)
-        // so we do not rely on Jira's phrase matching for the full summary, which can be brittle
-        // with punctuation such as dotted version numbers.
+        // Build a broader search that only anchors on the package name.
+        // Jira text search can be brittle with dotted versions and full-phrase matching,
+        // so we keep the JQL loose and then do exact summary matching in code.
         $jqlParts = [
             sprintf('project = "%s"', $this->config['jira_project_key']),
             sprintf('summary ~ "\\"%s\\""', $this->escapeJqlPhrase($dependency->name)),
-            sprintf('summary ~ "\\"%s\\""', $this->escapeJqlPhrase($dependency->currentVersion)),
-            sprintf('summary ~ "\\"%s\\""', $this->escapeJqlPhrase($dependency->latestVersion)),
-            sprintf('summary ~ "\\"%s\\""', $this->escapeJqlPhrase($summary)),
         ];
 
         $jql = implode(' AND ', $jqlParts) . ' ORDER BY created DESC';
@@ -366,7 +363,7 @@ class JiraService
                 'query' => [
                     'jql' => $jql,
                     'fields' => 'summary,status',
-                    'maxResults' => 25
+                    'maxResults' => 50
                 ] // Fetch summary and status, check a few results
             ]);
 
