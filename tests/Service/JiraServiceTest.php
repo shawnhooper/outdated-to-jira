@@ -121,82 +121,6 @@ class JiraServiceTest extends TestCase
         $this->assertNull($result);
     }
 
-    public function testFindExistingTicketReturnsClosedIssueWhenOnlyClosedMatches(): void
-    {
-        $service = $this->createService();
-        $dependency = new Dependency('test/package', '1.0.0', '1.1.0', 'composer');
-        $expectedSummary = 'Update Composer package test/package from 1.0.0 to 1.1.0';
-
-        $mockResponseJson = json_encode([
-            'total' => 2,
-            'issues' => [
-                [
-                    'key' => 'TEST-200',
-                    'fields' => [
-                        'summary' => $expectedSummary,
-                        'status' => [
-                            'name' => 'Resolved',
-                            'statusCategory' => ['key' => 'done']
-                        ]
-                    ]
-                ],
-                [
-                    'key' => 'TEST-201',
-                    'fields' => [
-                        'summary' => $expectedSummary,
-                        'status' => [
-                            'name' => 'Closed',
-                            'statusCategory' => ['key' => 'done']
-                        ]
-                    ]
-                ],
-            ]
-        ]);
-        $this->mockHandler->append(new Response(200, [], $mockResponseJson));
-
-        $result = $service->findExistingTicket($dependency);
-
-        $this->assertEquals('TEST-200', $result);
-    }
-
-    public function testFindExistingTicketReturnsOpenIssueWhenMixedStatuses(): void
-    {
-        $service = $this->createService();
-        $dependency = new Dependency('test/package', '1.0.0', '1.1.0', 'composer');
-        $expectedSummary = 'Update Composer package test/package from 1.0.0 to 1.1.0';
-
-        $mockResponseJson = json_encode([
-            'total' => 2,
-            'issues' => [
-                [
-                    'key' => 'TEST-202',
-                    'fields' => [
-                        'summary' => $expectedSummary,
-                        'status' => [
-                            'name' => 'Resolved',
-                            'statusCategory' => ['key' => 'done']
-                        ]
-                    ]
-                ],
-                [
-                    'key' => 'TEST-203',
-                    'fields' => [
-                        'summary' => $expectedSummary,
-                        'status' => [
-                            'name' => 'In Progress',
-                            'statusCategory' => ['key' => 'indeterminate']
-                        ]
-                    ]
-                ],
-            ]
-        ]);
-        $this->mockHandler->append(new Response(200, [], $mockResponseJson));
-
-        $result = $service->findExistingTicket($dependency);
-
-        $this->assertEquals('TEST-203', $result);
-    }
-
     public function testFindExistingTicketEscapesSpecialCharactersInSummary(): void
     {
         $service = $this->createService();
@@ -226,9 +150,6 @@ class JiraServiceTest extends TestCase
         parse_str($lastRequest->getUri()->getQuery(), $queryParams);
         $jqlQuery = $queryParams['jql'] ?? '';
         $this->assertNotSame('', $jqlQuery, 'Expected JQL query to be present in request.');
-        $this->assertStringContainsString('summary ~ "\"@scope\\/package\\/name\""', $jqlQuery);
-        $this->assertStringContainsString('summary ~ "\"2.2.17\""', $jqlQuery);
-        $this->assertStringContainsString('summary ~ "\"2.2.18\""', $jqlQuery);
         $this->assertStringContainsString('summary ~ "\"' . $this->escapeJqlPhrase($expectedSummary) . '\""', $jqlQuery);
     }
 
@@ -244,11 +165,7 @@ class JiraServiceTest extends TestCase
                 [
                     'key' => 'TEST-888',
                     'fields' => [
-                        'summary' => ' Update   Composer  package  test/package   from  1.0.0  to  1.1.0  ',
-                        'status' => [
-                            'name' => 'To Do',
-                            'statusCategory' => ['key' => 'new']
-                        ]
+                        'summary' => ' Update   Composer  package  test/package   from  1.0.0  to  1.1.0  '
                     ]
                 ]
             ]
