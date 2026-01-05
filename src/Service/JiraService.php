@@ -17,7 +17,6 @@ use Psr\Log\NullLogger;
 class JiraService
 {
     public const DRY_RUN_WOULD_CREATE = 'DRY_RUN_WOULD_CREATE'; // Add constant
-    private const CLOSED_STATUS_NAMES = ['closed', 'resolved'];
 
     private HttpClient $httpClient;
     private LoggerInterface $logger;
@@ -333,12 +332,11 @@ class JiraService
         $summary = $this->buildSummary($dependency);
         $normalizedSummary = $this->normalizeSummary($summary);
 
-        // Build a broader search that only anchors on the package name.
-        // Jira text search can be brittle with dotted versions and full-phrase matching,
-        // so we keep the JQL loose and then do exact summary matching in code.
+        // Build a search anchored on the exact summary phrase.
+        // We still do exact summary matching in code to avoid false positives.
         $jqlParts = [
             sprintf('project = "%s"', $this->config['jira_project_key']),
-            sprintf('summary ~ "\\"%s\\""', $this->escapeJqlPhrase($dependency->name)),
+            sprintf('summary ~ "\\"%s\\""', $this->escapeJqlPhrase($summary)),
         ];
 
         $jql = implode(' AND ', $jqlParts) . ' ORDER BY created DESC';
@@ -362,9 +360,9 @@ class JiraService
             $response = $this->httpClient->get('search', [
                 'query' => [
                     'jql' => $jql,
-                    'fields' => 'summary,status',
+                    'fields' => 'summary',
                     'maxResults' => 50
-                ] // Fetch summary and status, check a few results
+                ] // Fetch summary, check a few results
             ]);
 
             $statusCode = $response->getStatusCode();
@@ -398,7 +396,6 @@ class JiraService
 
                 // Check if total > 0 and issues exist
                 // phpcs:ignore Generic.Files.LineLength.TooLong
-                $closedMatch = null;
                 if (
                     isset($responseData['total'])
                     && $responseData['total'] > 0
@@ -412,59 +409,22 @@ class JiraService
                             continue;
                         }
 
-                        $status = $fields['status'] ?? [];
-                        $statusName = strtolower((string) ($status['name'] ?? ''));
-                        $statusCategoryKey = strtolower((string) ($status['statusCategory']['key'] ?? ''));
                         $this->logger->debug(
                             'Inspecting JIRA search candidate for summary match.',
                             [
                                 'key' => $issue['key'] ?? 'UNKNOWN',
                                 'issue_summary' => $issueSummary,
                                 'normalized_issue_summary' => $this->normalizeSummary($issueSummary),
-                                'target_normalized_summary' => $normalizedSummary,
-                                'status' => $statusName,
-                                'status_category' => $statusCategoryKey
+                                'target_normalized_summary' => $normalizedSummary
                             ]
                         );
-                        $isClosed = in_array($statusName, self::CLOSED_STATUS_NAMES, true) || $statusCategoryKey === 'done';
-
-                        if ($isClosed) {
-                            if ($closedMatch === null) {
-                                $closedMatch = [
-                                    'key' => $issue['key'] ?? 'UNKNOWN',
-                                    'status' => $status['name'] ?? 'UNKNOWN'
-                                ];
-                            }
-
-                            $this->logger->debug(
-                                'Matching ticket is already Closed/Resolved. Holding key for reuse if no open issues exist.',
-                                [
-                                    'key' => $issue['key'] ?? 'UNKNOWN',
-                                    'status' => $status['name'] ?? 'UNKNOWN'
-                                ]
-                            );
-                            continue;
-                        }
 
                         $foundKey = $issue['key'];
                         $this->logger->debug(
-                            'Found existing open JIRA ticket via search with exact summary match.',
+                            'Found existing JIRA ticket via search with exact summary match.',
                             ['key' => $foundKey]
                         );
                         return $foundKey;
-                    }
-
-
-                    if ($closedMatch !== null) {
-                        $this->logger->info(
-                            'Matching ticket found but it is Closed/Resolved. Reusing existing key to avoid duplicates.',
-                            [
-                                'key' => $closedMatch['key'],
-                                'status' => $closedMatch['status'],
-                                'summary' => $summary
-                            ]
-                        ); // phpcs:ignore Generic.Files.LineLength.TooLong
-                        return $closedMatch['key'];
                     }
 
                     $this->logger->debug(
