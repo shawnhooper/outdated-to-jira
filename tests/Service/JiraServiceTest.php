@@ -147,8 +147,10 @@ class JiraServiceTest extends TestCase
         $lastRequestData = end($this->historyContainer);
         $lastRequest = $lastRequestData['request'];
 
-        parse_str($lastRequest->getUri()->getQuery(), $queryParams);
-        $jqlQuery = $queryParams['jql'] ?? '';
+        // For POST /search/jql, the JQL is in the JSON body, not the URL
+        $body = $lastRequest->getBody()->getContents();
+        $json = json_decode($body, true);
+        $jqlQuery = $json['query'] ?? '';
         $this->assertNotSame('', $jqlQuery, 'Expected JQL query to be present in request.');
         $this->assertStringContainsString('summary ~ "\"' . $this->escapeJqlPhrase($expectedSummary) . '\""', $jqlQuery);
     }

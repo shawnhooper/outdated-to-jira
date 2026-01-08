@@ -327,21 +327,15 @@ class JiraService
      // --- Optional: Duplicate Checking ---
     public function findExistingTicket(Dependency $dependency): ?string
     {
-        // echo "[DIAGNOSTIC] Entering findExistingTicket for: {$dependency->name}" . PHP_EOL; // REMOVE
-        // Construct the exact summary we would use for a new ticket
         $summary = $this->buildSummary($dependency);
         $normalizedSummary = $this->normalizeSummary($summary);
 
-        // Build a search anchored on the exact summary phrase.
-        // We still do exact summary matching in code to avoid false positives.
         $jqlParts = [
             sprintf('project = "%s"', $this->config['jira_project_key']),
             sprintf('summary ~ "\\"%s\\""', $this->escapeJqlPhrase($summary)),
         ];
-
         $jql = implode(' AND ', $jqlParts) . ' ORDER BY created DESC';
 
-        // Extra console/debug logs to help verify the JQL being used for duplicate detection
         $this->logger->info(
             'Searching for existing ticket with JQL parts',
             [
@@ -355,24 +349,22 @@ class JiraService
             ]
         );
 
-        // echo "[DIAGNOSTIC] About to enter search try block for: {$dependency->name}" . PHP_EOL; // REMOVE
         try {
-            $response = $this->httpClient->get('search', [
-                'query' => [
-                    'jql' => $jql,
-                    'fields' => 'summary',
+            // JIRA API v3: /search/jql endpoint, POST with JSON body
+            $response = $this->httpClient->post('search/jql', [
+                'json' => [
+                    'query' => $jql,
+                    'fields' => ['summary'],
                     'maxResults' => 50
-                ] // Fetch summary, check a few results
+                ]
             ]);
 
             $statusCode = $response->getStatusCode();
-            // Rewind the stream before reading contents, as logger might have read it
             $response->getBody()->rewind();
             $body = $response->getBody()->getContents();
 
             if ($statusCode === 200) {
                 $responseData = json_decode($body, true);
-                // Check if decode failed
                 if ($responseData === null && json_last_error() !== JSON_ERROR_NONE) {
                     $this->logger->error(
                         'Failed to decode JIRA search response JSON.',
@@ -381,7 +373,7 @@ class JiraService
                             'response_body_preview' => substr($body, 0, 500)
                         ]
                     );
-                    return null; // Treat decode failure as no duplicate found
+                    return null;
                 }
 
                 $this->logger->debug(
@@ -390,27 +382,23 @@ class JiraService
                         'jql' => $jql,
                         'total' => $responseData['total'] ?? null,
                         'returned_issues' => is_array($responseData['issues'] ?? null) ? count($responseData['issues']) : 0,
-                        // 'response_data' => $responseData // Might be too verbose for debug?
                     ]
                 );
 
-                // Check if total > 0 and issues exist
-                // phpcs:ignore Generic.Files.LineLength.TooLong
                 if (
                     isset($responseData['total'])
                     && $responseData['total'] > 0
                     && isset($responseData['issues'])
                     && is_array($responseData['issues'])
                 ) {
-                    foreach ($responseData['issues'] as $issue) { // phpcs:ignore Generic.Files.LineLength.TooLong
+                    foreach ($responseData['issues'] as $issue) {
                         $fields = $issue['fields'] ?? [];
                         $issueSummary = $fields['summary'] ?? '';
                         if ($this->normalizeSummary($issueSummary) !== $normalizedSummary) {
                             continue;
                         }
-
                         $this->logger->debug(
-                            'Inspecting JIRA search candidate for summary match.',
+                            'Found existing JIRA ticket via search with exact summary match.',
                             [
                                 'key' => $issue['key'] ?? 'UNKNOWN',
                                 'issue_summary' => $issueSummary,
@@ -418,52 +406,41 @@ class JiraService
                                 'target_normalized_summary' => $normalizedSummary
                             ]
                         );
-
                         $foundKey = $issue['key'];
                         $this->logger->debug(
-                            'Found existing JIRA ticket via search with exact summary match.',
+                            'Found existing ticket with an exact summary match.',
                             ['key' => $foundKey]
                         );
                         return $foundKey;
                     }
-
                     $this->logger->debug(
                         'No existing ticket with an exact summary match was found.',
                         ['expected_summary' => $summary]
-                    ); // phpcs:ignore Generic.Files.LineLength.TooLong
+                    );
                     return null;
                 }
-                // If total is 0 or issues array is missing/invalid
-                // Restore original log message
                 $this->logger->debug('No existing open ticket found via search (total=0 or issues array empty/invalid).');
                 return null;
             } else {
-                // Ensure diagnostic echo for search failure is present
-                // echo "[DIAGNOSTIC] JIRA Search Failed - Status Code: {$statusCode}" . PHP_EOL; // REMOVE
-                // echo "[DIAGNOSTIC] JIRA Search Failed - Response Body: {$body}" . PHP_EOL; // REMOVE
-                // echo "[DIAGNOSTIC] JIRA Search Failed - JQL Used: {$jql}" . PHP_EOL; // REMOVE
                 $this->logger->warning(
                     'JIRA API search for duplicates failed.',
                     [
                         'status' => $statusCode,
-                        'response_preview' => substr($body, 0, 500), // Use preview
+                        'response_preview' => substr($body, 0, 500),
                         'jql' => $jql
                     ]
-                ); // phpcs:ignore Generic.Files.LineLength.TooLong
-                return null; // Proceed with creation if search fails?
+                );
+                return null;
             }
         } catch (RequestException | \Exception $e) {
-             // Ensure diagnostic echo for search exception is present
-             // echo "[DIAGNOSTIC] JIRA Search Exception: " . $e->getMessage() . PHP_EOL; // REMOVE
-             // echo "[DIAGNOSTIC] JIRA Search Exception - JQL Used: {$jql}" . PHP_EOL; // REMOVE
-             $this->logger->error(
-                 'Exception during JIRA ticket search for duplicates.',
-                 [
+            $this->logger->error(
+                'Exception during JIRA ticket search for duplicates.',
+                [
                     'message' => $e->getMessage(),
                     'jql' => $jql
-                 ]
-             ); // phpcs:ignore Generic.Files.LineLength.TooLong
-             return null; // Proceed with creation on error?
+                ]
+            );
+            return null;
         }
     }
 
