@@ -21,6 +21,7 @@ class JiraService
     private HttpClient $httpClient;
     private LoggerInterface $logger;
     private array $config;
+    private bool $lastSearchFailed = false;
     /**
      * Cache of summary => issue key to avoid duplicate creations within the same run
      * when Jira search indexing has not yet caught up.
@@ -123,6 +124,16 @@ class JiraService
                 ]
             ); // phpcs:ignore Generic.Files.LineLength.TooLong
             return $existingKey;
+        }
+        if ($this->lastSearchFailed) {
+            $this->logger->warning(
+                'Skipping creation: Unable to verify duplicates due to JIRA search failure.',
+                [
+                    'dependency' => $dependency->name,
+                    'summary' => $summary,
+                ]
+            );
+            return null;
         }
 
         // --- If no existing ticket, check for dry run before attempting creation ---
@@ -327,6 +338,7 @@ class JiraService
      // --- Optional: Duplicate Checking ---
     public function findExistingTicket(Dependency $dependency): ?string
     {
+        $this->lastSearchFailed = false;
         $summary = $this->buildSummary($dependency);
         $normalizedSummary = $this->normalizeSummary($summary);
 
@@ -366,6 +378,7 @@ class JiraService
             if ($statusCode === 200) {
                 $responseData = json_decode($body, true);
                 if ($responseData === null && json_last_error() !== JSON_ERROR_NONE) {
+                    $this->lastSearchFailed = true;
                     $this->logger->error(
                         'Failed to decode JIRA search response JSON.',
                         [
@@ -422,6 +435,7 @@ class JiraService
                 $this->logger->debug('No existing open ticket found via search (total=0 or issues array empty/invalid).');
                 return null;
             } else {
+                $this->lastSearchFailed = true;
                 $this->logger->warning(
                     'JIRA API search for duplicates failed.',
                     [
@@ -433,6 +447,7 @@ class JiraService
                 return null;
             }
         } catch (RequestException | \Exception $e) {
+            $this->lastSearchFailed = true;
             $this->logger->error(
                 'Exception during JIRA ticket search for duplicates.',
                 [

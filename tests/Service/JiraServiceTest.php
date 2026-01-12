@@ -241,6 +241,21 @@ class JiraServiceTest extends TestCase
         $this->assertEquals($existingKey, $result);
     }
 
+    public function testCreateTicketSkipsWhenSearchFails(): void
+    {
+        $service = $this->createService();
+        $dependency = new Dependency('test/package', '1.0.0', '1.1.0', 'composer');
+
+        $this->mockHandler->append(new Response(410, [], '{"errorMessages":["Removed"],"errors":{}}'));
+
+        $result = $service->createTicket($dependency);
+        $this->assertNull($result);
+
+        $this->assertCount(1, $this->historyContainer);
+        $lastRequest = $this->historyContainer[0]['request'];
+        $this->assertSame('POST', $lastRequest->getMethod());
+    }
+
     public function testCreateTicketDryRunWouldCreate(): void
     {
         // Enable dry run
