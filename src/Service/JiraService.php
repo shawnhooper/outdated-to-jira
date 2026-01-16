@@ -362,13 +362,13 @@ class JiraService
         );
 
         try {
-            // JIRA API v3: /search/jql endpoint, POST with JSON body
-            $response = $this->httpClient->post('search/jql', [
-                'json' => [
-                    'query' => $jql,
-                    'fields' => ['summary'],
-                    'maxResults' => 50
-                ]
+            // JIRA API v3: /search/jql endpoint, GET with query parameters
+            $response = $this->httpClient->get('search/jql', [
+                'query' => [
+                    'jql' => $jql,
+                    'fields' => 'summary',
+                    'maxResults' => 50,
+                ],
             ]);
 
             $statusCode = $response->getStatusCode();
@@ -398,12 +398,7 @@ class JiraService
                     ]
                 );
 
-                if (
-                    isset($responseData['total'])
-                    && $responseData['total'] > 0
-                    && isset($responseData['issues'])
-                    && is_array($responseData['issues'])
-                ) {
+                if (isset($responseData['issues']) && is_array($responseData['issues'])) {
                     foreach ($responseData['issues'] as $issue) {
                         $fields = $issue['fields'] ?? [];
                         $issueSummary = $fields['summary'] ?? '';
@@ -432,7 +427,7 @@ class JiraService
                     );
                     return null;
                 }
-                $this->logger->debug('No existing open ticket found via search (total=0 or issues array empty/invalid).');
+                $this->logger->debug('No existing open ticket found via search (issues array empty/invalid).');
                 return null;
             } else {
                 $this->lastSearchFailed = true;
