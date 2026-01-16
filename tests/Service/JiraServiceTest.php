@@ -79,7 +79,6 @@ class JiraServiceTest extends TestCase
 
         // Mock the JIRA search API response
         $mockResponseJson = json_encode([
-            'total' => 1,
             'issues' => [
                 [
                     'key' => 'TEST-123',
@@ -104,7 +103,6 @@ class JiraServiceTest extends TestCase
 
         // Mock response with a similar, but not exact, summary
         $mockResponseJson = json_encode([
-            'total' => 1,
             'issues' => [
                 [
                     'key' => 'TEST-124',
@@ -128,7 +126,6 @@ class JiraServiceTest extends TestCase
         $expectedSummary = 'Update Npm package @scope/package/name from 2.2.17 to 2.2.18';
 
         $mockResponseJson = json_encode([
-            'total' => 1,
             'issues' => [
                 [
                     'key' => 'TEST-777',
@@ -147,10 +144,11 @@ class JiraServiceTest extends TestCase
         $lastRequestData = end($this->historyContainer);
         $lastRequest = $lastRequestData['request'];
 
-        // For POST /search/jql, the JQL is in the JSON body, not the URL
-        $body = $lastRequest->getBody()->getContents();
-        $json = json_decode($body, true);
-        $jqlQuery = $json['query'] ?? '';
+        // For GET /search/jql, the JQL is in the query string.
+        $queryString = $lastRequest->getUri()->getQuery();
+        $this->assertNotSame('', $queryString, 'Expected query string to be present in request.');
+        parse_str($queryString, $queryParams);
+        $jqlQuery = $queryParams['jql'] ?? '';
         $this->assertNotSame('', $jqlQuery, 'Expected JQL query to be present in request.');
         $this->assertStringContainsString('summary ~ "\"' . $this->escapeJqlPhrase($expectedSummary) . '\""', $jqlQuery);
     }
@@ -162,7 +160,6 @@ class JiraServiceTest extends TestCase
         $expectedSummary = 'Update Composer package test/package from 1.0.0 to 1.1.0';
 
         $mockResponseJson = json_encode([
-            'total' => 1,
             'issues' => [
                 [
                     'key' => 'TEST-888',
@@ -184,8 +181,8 @@ class JiraServiceTest extends TestCase
         $service = $this->createService();
         $dependency = new Dependency('test/package', '1.0.0', '1.1.0', 'composer');
 
-        // Mock response with total = 0
-        $mockResponseJson = json_encode(['total' => 0, 'issues' => []]);
+        // Mock response with no issues
+        $mockResponseJson = json_encode(['issues' => []]);
         $this->mockHandler->append(new Response(200, [], $mockResponseJson));
 
         $result = $service->findExistingTicket($dependency);
@@ -230,7 +227,6 @@ class JiraServiceTest extends TestCase
 
         // Mock findExistingTicket response (simulate search finding an exact match)
         $mockSearchResponse = json_encode([
-            'total' => 1,
             'issues' => [['key' => $existingKey, 'fields' => ['summary' => 'Update Composer package test/package from 1.0.0 to 1.1.0']]]
         ]);
         $this->mockHandler->append(new Response(200, [], $mockSearchResponse));
@@ -253,7 +249,7 @@ class JiraServiceTest extends TestCase
 
         $this->assertCount(1, $this->historyContainer);
         $lastRequest = $this->historyContainer[0]['request'];
-        $this->assertSame('POST', $lastRequest->getMethod());
+        $this->assertSame('GET', $lastRequest->getMethod());
     }
 
     public function testCreateTicketDryRunWouldCreate(): void
@@ -263,7 +259,7 @@ class JiraServiceTest extends TestCase
         $dependency = new Dependency('test/package', '1.0.0', '1.1.0', 'composer');
 
         // Mock findExistingTicket response (simulate search finding nothing)
-        $mockSearchResponse = json_encode(['total' => 0, 'issues' => []]);
+        $mockSearchResponse = json_encode(['issues' => []]);
         $this->mockHandler->append(new Response(200, [], $mockSearchResponse));
 
         // No POST should occur in dry run
@@ -281,7 +277,6 @@ class JiraServiceTest extends TestCase
 
         // Mock findExistingTicket response (simulate search finding an exact match)
          $mockSearchResponse = json_encode([
-            'total' => 1,
             'issues' => [['key' => $existingKey, 'fields' => ['summary' => 'Update Composer package test/package from 1.0.0 to 1.1.0']]]
          ]);
         $this->mockHandler->append(new Response(200, [], $mockSearchResponse));
@@ -310,7 +305,7 @@ class JiraServiceTest extends TestCase
         $expectedPriority = 'Emergency';
 
         // Mock findExistingTicket finding nothing
-        $mockSearchResponse = json_encode(['total' => 0, 'issues' => []]);
+        $mockSearchResponse = json_encode(['issues' => []]);
         $this->mockHandler->append(new Response(200, [], $mockSearchResponse));
 
         // Mock successful POST response
@@ -342,7 +337,7 @@ class JiraServiceTest extends TestCase
         $service = $this->createService();
         $dependency = new Dependency('test/package', '1.0.0', '2.0.0', 'composer');
 
-        $mockSearchResponse = json_encode(['total' => 0, 'issues' => []]);
+        $mockSearchResponse = json_encode(['issues' => []]);
         $mockCreateResponse = json_encode(['key' => 'TEST-600']);
 
         $this->mockHandler->append(new Response(200, [], $mockSearchResponse));
@@ -361,7 +356,7 @@ class JiraServiceTest extends TestCase
         $dependency = new Dependency('test/package', '1.0.0', '1.1.0', 'composer');
 
         // Mock findExistingTicket finding nothing
-        $mockSearchResponse = json_encode(['total' => 0, 'issues' => []]);
+        $mockSearchResponse = json_encode(['issues' => []]);
         $this->mockHandler->append(new Response(200, [], $mockSearchResponse));
 
         // Mock failed POST response
