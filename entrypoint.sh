@@ -12,6 +12,19 @@ echo "JIRA URL: ${JIRA_URL}"
 echo "JIRA Project: ${JIRA_PROJECT_KEY}"
 echo "JIRA Issue Type: ${JIRA_ISSUE_TYPE}"
 
+# Force HTTPS for GitHub git URLs to avoid SSH in minimal containers.
+# If a token is provided, embed it so private repos can be accessed.
+if [ -n "${GIT_AUTH_TOKEN}" ]; then
+  git config --global url."https://x-access-token:${GIT_AUTH_TOKEN}@github.com/".insteadOf "git@github.com:"
+  git config --global url."https://x-access-token:${GIT_AUTH_TOKEN}@github.com/".insteadOf "ssh://git@github.com/"
+elif [ -n "${GITHUB_TOKEN}" ]; then
+  git config --global url."https://x-access-token:${GITHUB_TOKEN}@github.com/".insteadOf "git@github.com:"
+  git config --global url."https://x-access-token:${GITHUB_TOKEN}@github.com/".insteadOf "ssh://git@github.com/"
+else
+  git config --global url."https://github.com/".insteadOf "git@github.com:"
+  git config --global url."https://github.com/".insteadOf "ssh://git@github.com/"
+fi
+
 # Construct the command
 CMD="php /app/run-action.php"
 

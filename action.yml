@@ -30,6 +30,9 @@ inputs:
   jira-issue-type:
     description: 'JIRA issue type to use for created tickets (e.g., Task).'
     required: true
+  github-token:
+    description: 'GitHub token for accessing private git dependencies (e.g., secrets.GITHUB_TOKEN).'
+    required: false
 
 # Define outputs the action might produce (optional)
 # outputs:
@@ -53,4 +56,5 @@ runs:
     JIRA_USER_EMAIL: ${{ inputs.jira-user-email }}
     JIRA_API_TOKEN: ${{ inputs.jira-api-token }}
     JIRA_PROJECT_KEY: ${{ inputs.jira-project-key }}
-    JIRA_ISSUE_TYPE: ${{ inputs.jira-issue-type }} 
+    JIRA_ISSUE_TYPE: ${{ inputs.jira-issue-type }}
+    GIT_AUTH_TOKEN: ${{ inputs.github-token }}

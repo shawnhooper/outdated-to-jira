@@ -149,6 +149,7 @@ jobs:
           # Optional inputs:
           # dry-run: 'true'
           # packages: 'php-package1 vendor/package2'
+          # github-token: ${{ secrets.GITHUB_TOKEN }} # For private git dependencies
 
           # Required JIRA configuration (use secrets!)
           jira-url: ${{ secrets.JIRA_URL }}
@@ -172,6 +173,7 @@ jobs:
           # Optional inputs:
           # dry-run: 'true'
           # packages: 'react lodash'
+          # github-token: ${{ secrets.GITHUB_TOKEN }} # For private git dependencies
 
           # Required JIRA configuration (use secrets!)
           jira-url: ${{ secrets.JIRA_URL }}
@@ -187,6 +189,7 @@ jobs:
 *   `dependency-file` (Required): Path to `composer.json` or `package.json` relative to the root of the repository where the workflow runs.
 *   `dry-run` (Optional): Set to `'true'` to simulate without creating tickets. Defaults to `'false'`.
 *   `packages` (Optional): A space-separated string of package names to filter for.
+*   `github-token` (Optional): GitHub token for private git dependencies (e.g., `secrets.GITHUB_TOKEN` or a PAT with `repo` scope). Without it, private GitHub VCS deps will fail over HTTPS.
 *   `jira-url` (Required): Base URL of your JIRA instance.
 *   `jira-user-email` (Required): Email address for JIRA API authentication.
 *   `jira-api-token` (Required): JIRA API token for authentication (**Use GitHub Secrets**).
